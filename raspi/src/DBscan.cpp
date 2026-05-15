@@ -441,11 +441,8 @@ void matchClusters(std::vector<TrackedObject>& activeTracks, std::vector<DBscanC
         if (trackAssigned[t]) continue; // ignore matched tracks
 
         activeTracks.at(t).untrackedSince++;
-
-        if (activeTracks.at(t).untrackedSince > MAX_TRACK_TIME) activeTracks.erase(activeTracks.begin() + t);
     }
 
-    // Create new activeTrack for untracked clusters
     for (int c = 0; c < newClusters.size() - 1; c++) { // -1 to ignore noise cluster
         if (clustersAssigned[c]) continue; // ignore tracked cluster
 
@@ -473,4 +470,15 @@ int DetectOvertake(const TrackedObject& track) {
 
     return approach_zone;
 
+}
+
+
+
+
+int DetectZone(const TrackedObject& track) {
+
+    if (track.estPos.first > 3.5f) return 2; //danger zone
+    if (track.estPos.first > 2.5f) return 1; //warning zone
+
+    return -1;
 }

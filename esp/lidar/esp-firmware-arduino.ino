@@ -2,8 +2,9 @@
 * main.cpp                                                           *
 *                                                                    *
 * This is the main file for the firmware for the ESP32-S3-DevkitC-1U *
-* that will be supplying power and recieving data from the LiDAR at  *
-* the back of the bike.                                              *
+* that will be supplying power and recieving data from the LiDAR and *
+* Ultrassonic sensor at the back of the bike. Data is then send to   *
+* the RasPI through CAN.                                             *
 *                                                                    *
 **********************************************************************/
 

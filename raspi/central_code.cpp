@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <array>
 #include <vector>
+#include <unordered_map>
 #include <string>
 #include <cstdint>
 #include <cmath>
@@ -26,11 +27,9 @@
 #include "include/httplib.h"
 
 // incoming CAN frame IDs ("can0" 500KBPS extended CAN)
-#define ID_LIDAR       514         
-#define ID_ULTRASS     67109634    
-// #define ID_HEARTRATE   -1          
-// #define ID_INCLINATION -1
-// #define ID_SPEED       -1
+#define ID_LIDAR    0x010
+#define ID_ULTRASS  0x020
+#define ID_RFID     0x030
 
 
 // task_lidar configuration
@@ -45,30 +44,40 @@ static constexpr float SECTOR_ANGLE_RAD = M_PI / 180.0f * (VALID_LIDAR_CONE_ANGL
 static constexpr int MESSAGE_SIZE = 2 * NUMBER_OF_SECTORS + 4;
 
 
+// Map of allowed UIDs from RFID readings
+const std::unordered_map<uint, std::string> rfid_names = {
+    // Beware that the UIDs are read backwards (ex: Enrico <- CAN : 59 C4 11 07)
+    {0x0711C459, "Enrico"}, //card
+    {0X0728AECB, "Iara"},   //blue tag
+};
 
+// Generates the string that will be showed at the web page's dashboard
+std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids);
 
-std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass);
-void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass);
+// Saves the dashboard string into a local file for logging pourposes. I think is also overkill for the projects
+void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids);
 
+// Struct with coontrolled access data that is shared by all threads. Saves the state that should be updated into dashboard.
 struct DashboardState {
     std::vector<TrackedObject> tracks;
     float ultrass = 0.0f;
+    std::vector<uint> present_rfids;
 };
 
 std::mutex mutex_dashboard;
 DashboardState shared_dash_state;
 
 
-
+// Is a global buffer of most recent recieved frames of each kind (and full lidar Cone message). Also has controlled access.
 struct InFrames {
     std::array<uint8_t, MESSAGE_SIZE> lidar_message; 
 
     struct can_frame closestObject  = {};
-    struct can_frame heartRate      = {};
-    struct can_frame inclination    = {};
+    struct can_frame rfid     = {};
 
     bool has_new_lidar   = false;
-    bool has_new_general = false;
+    bool has_new_rfid    = false;
+    bool has_new_ultrass = false;
 };
 
 std::mutex mutex_inFrames;
@@ -77,13 +86,16 @@ std::condition_variable cv_general;
 
 InFrames in_frame_buffer;
 
-std::atomic<bool> program_running{true};
 
+std::atomic<bool> program_running{true};
+// This will control program_running, the condition for the threads to shut on ctrl + C.
 void handle_sigint(int sig) {
-    std::cout << "\n[System] Ctrl+C detected. Initiating graceful shutdown...\n";
+    std::cout << "\n[main] Ctrl+C detected. Initiating graceful shutdown...\n";
     program_running = false;
 }
 
+
+// This task will read all incoming frames, save them on the global buffer and recustruct the LiDAR message
 void task_can_read() {
     std::cout << "[task_can_read] Starting....\n";
 
@@ -125,7 +137,7 @@ void task_can_read() {
 
     while (program_running) {
 
-        // read() is a blocking call. If Ctrl+C is pressed, it will return -1 and set errno to EINTR.
+        // read() is a blocking call. If Ctrl+C is pressed and LiDAR is off program will freeze.
         int nbytes = read(can0_socket_fd, &inFrame, sizeof(struct can_frame));
 
         if (nbytes <= 0) {
@@ -150,6 +162,8 @@ void task_can_read() {
 
         switch(actual_id) {
             case ID_LIDAR: {
+                // Frames from the LiDAR will be constantly being concatnated into the message buffer.
+                // Once the message buffer has a complete Cone, it will signal the task_lidar() to do its thing
 
                 bool isHeader = (inFrame.can_dlc >= 2 
                               && inFrame.data[0] == CAN_HEADER_1 
@@ -186,37 +200,33 @@ void task_can_read() {
                 }
                 break;
             }
-            case ID_ULTRASS: {
+            case ID_RFID: {
+                // Update most recent RFID frame on global buffer and notify task_general_data() of update
+
                 {
                     std::lock_guard<std::mutex> lock(mutex_inFrames);
-                    in_frame_buffer.closestObject = inFrame;
-                    in_frame_buffer.has_new_general = true;
+                    in_frame_buffer.rfid = inFrame;
+                    in_frame_buffer.has_new_rfid = true;
                 }
                 notify_general = true;
                 break;
             }
-            // case ID_HEARTRATE: {
-            //     {
-            //         std::lock_guard<std::mutex> lock(mutex_inFrames);
-            //         in_frame_buffer.heartRate = inFrame;
-            //         in_frame_buffer.has_new_general = true;
-            //     }
-            //     notify_general = true;
-            //     break;
-            // }
-            // case ID_INCLINATION: {
-            //     {
-            //         std::lock_guard<std::mutex> lock(mutex_inFrames);
-            //         in_frame_buffer.inclination = inFrame;
-            //         in_frame_buffer.has_new_general = true;
-            //     }
-            //     notify_general = true;
-            //     break;
-            // }
+            case ID_ULTRASS: {
+                // Same as above
+
+                {
+                    std::lock_guard<std::mutex> lock(mutex_inFrames);
+                    in_frame_buffer.closestObject = inFrame;
+                    in_frame_buffer.has_new_ultrass = true;
+                }
+                notify_general = true;
+                break;
+            }
             default:
                 break;
         }
 
+        // Tasks notification
         if (notify_lidar) {
             cv_lidar.notify_one();
         }
@@ -237,9 +247,13 @@ cv::Mat shared_display_image;
 std::atomic<bool> new_display_ready{false};
 
 void task_lidar() {
+    // This task is responsible for taking the complete Cone message and making it into a image.
+    // This process includes everything from extracting the points from the message to keeping track of objects.
+    // Image will be sent to main() where the dashboard is being mantained, and tracks data is being saved on global buffer.
+
     std::cout << "[task_lidar] Starting...\n";
 
-    // trainable parameters
+    // f trainable parameters
     static constexpr float alpha = 0.2f;                // radius search for neighbour
     static constexpr float alpha_attenuation = 0.08f;   // compensation for point spread over distance
     static constexpr int max_pts = 75;                  // maximum emount of points for a cluster to be valid
@@ -269,7 +283,7 @@ void task_lidar() {
     while (program_running) {
         std::unique_lock<std::mutex> lock(mutex_inFrames);
 
-        cv_lidar.wait(lock, []{ 
+        cv_lidar.wait(lock, []{ // thread should sleep untill it is signaled by task_can_read() or main() (program ending)
             return in_frame_buffer.has_new_lidar || !program_running; 
         });
 
@@ -323,56 +337,25 @@ void task_lidar() {
         // apply DBscan clustering logic on points with neighbours
         std::vector<DBscanCluster> clusters = ClusterPoints(allPoints, min_pts, max_pts, pts_attenuation);
 
-        // check activeTracks to find most likely (by distance) match between clusters from previous messages and current message
+        // check activeTracks to find most likely (greedy by distance) match between clusters from previous messages and current message
         matchClusters(activeTracks, clusters, deltaTimeSec);
 
         cv::Mat local_img(imageSize, CV_8UC3, cv::Scalar(0, 0, 0));
         float scaleFactor = imageSize.height / 5.0f;
 
-        // pointsToImage() adaptation
-        // ----------------------------------------------------
-        // WARNING: cv::show() has to happen in main thread !!!
-        // Instead of calling pointsToImage which opens a window, 
-        // we just draw to a Mat and pass it to the main thread.
-        /*
-        
-        for (const auto& pCart : allPoints) {
-            if (!pCart.isValid) continue;
-            cv::Point2f p(pCart.coordinates.first, pCart.coordinates.second);
-            p.x = (p.x * scaleFactor) + (imageSize.width / 2);
-            p.y = p.y * scaleFactor;
-            cv::circle(local_img, p, 1, cv::Scalar(0, 255, 0), -1);
-        }
-        
-        */
-
-
-        // clustersToImage() adaptation
-        // ----------------------------------------------------
-
-        /*
 
         for (DBscanCluster &clust : clusters) {
 
+            // Default colour is green (for noise)
             cv::Scalar colour(0, 255, 0);
 
+            // Select a ciclic colour for cluster from its ID
             if (clust.id != -1 ){
                 int colourIdx = clust.id % Colours.size();
                 colour = Colours.at(colourIdx);
-
-                cv::Scalar centroidColour(0, 165, 255);   // Orange
-                cv::Point2f pC(clust.centroid.first, clust.centroid.second);
-                
-                pC.x *= scaleFactor;
-                pC.y *= scaleFactor;
-
-                pC.x += imageSize.width / 2;
-
-                //std::cout << pC.x << " | " << pC.y << "\n";
-
-                cv::circle(local_img, pC, 2, centroidColour, 2);
             }
 
+            // Scale points to image and print them with respective cluster colour
             for (int pIdx : clust.points){
                 DBscanPoint& pointDB = allPoints.at(pIdx);
                 cv::Point2f p(pointDB.coordinates.first, pointDB.coordinates.second);
@@ -385,15 +368,9 @@ void task_lidar() {
                 cv::circle(local_img, p, 1, colour, -1);
             }
         }
-        
-        */
 
-
-        // tracksToImage() adaptation
-        // ----------------------------------------------------
-        
+        // Print trackedObject points with difference of also printing the centroid and drawing line of estimated speed
         for (TrackedObject& T : activeTracks) {
-
             if (T.untrackedSince > 0) continue;
 
             int colourIdx = T.id % Colours.size();
@@ -425,36 +402,8 @@ void task_lidar() {
                     
                 }
             }
-
-
-            for (int pIdx : T.currentCluster.points){
-                DBscanPoint& pointDB = allPoints.at(pIdx);
-                cv::Point2f p(pointDB.coordinates.first, pointDB.coordinates.second);
-                
-                p.x *= scaleFactor;
-                p.y *= scaleFactor;
-
-                p.x += imageSize.width / 2;
-
-                cv::circle(local_img, p, 1, colour, -1);
-            }
-        }
-
-        cv::Scalar green (0, 255, 0);
-
-        for (int pIdx : clusters.back().points) {
-            DBscanPoint& pointDB = allPoints.at(pIdx);
-            cv::Point2f p(pointDB.coordinates.first, pointDB.coordinates.second);
-            
-            p.x *= scaleFactor;
-            p.y *= scaleFactor;
-
-            p.x += imageSize.width / 2;
-
-            cv::circle(local_img, p, 1, green, -1);
         }
         
-
         // Safely hand the image over to the main thread for displaying
         {
             std::lock_guard<std::mutex> disp_lock(mutex_display);
@@ -476,33 +425,72 @@ void task_lidar() {
 
 
 void task_general_data() {
+    // Data other than LiDAR does not need intensive computing, so they can share same thread
+    // This thread keeps track of which RFID UIDs are currintly "inside" and processes the ultrassonic message into the global buffer
+
     std::cout << "[task_general] Starting...\n";
+
+    // Local list to remember who is currently checked in
+    std::vector<uint> present_rfids; 
 
     while (program_running) {
         std::unique_lock<std::mutex> lock(mutex_inFrames);
 
         cv_general.wait(lock, []{ 
-            return in_frame_buffer.has_new_general || !program_running; 
+            return in_frame_buffer.has_new_rfid || in_frame_buffer.has_new_ultrass || !program_running; 
         });
 
         if (!program_running) break;
 
-        struct can_frame local_ultrass = in_frame_buffer.closestObject;
-        struct can_frame local_heart   = in_frame_buffer.heartRate;
-        struct can_frame local_inclin  = in_frame_buffer.inclination;
+        bool process_rfid = in_frame_buffer.has_new_rfid;
+        bool process_ultrass = in_frame_buffer.has_new_ultrass;
 
-        in_frame_buffer.has_new_general = false; 
+        struct can_frame local_rfid = in_frame_buffer.rfid;
+        struct can_frame local_ultrass = in_frame_buffer.closestObject;
+
+        in_frame_buffer.has_new_rfid = false; 
+        in_frame_buffer.has_new_ultrass = false;
 
         lock.unlock();
 
-        float calculated_ultrasound_cm;
-        std::memcpy(&calculated_ultrasound_cm, local_ultrass.data, sizeof(float));
-
-        {
+        // Process Ultrasound
+        if (process_ultrass) {
+            float calculated_ultrasound_cm;
+            std::memcpy(&calculated_ultrasound_cm, local_ultrass.data, sizeof(float));
+            
             std::lock_guard<std::mutex> dash_lock(mutex_dashboard);
             shared_dash_state.ultrass = calculated_ultrasound_cm;
         }
-        // ...
+
+        // Process RFID
+        if (process_rfid) {
+            uint rfid = 0;
+            std::memcpy(&rfid, local_rfid.data, sizeof(uint));
+
+            bool is_entry = true;
+
+            // Toggle entry/exit in our local list
+            for (auto it = present_rfids.begin(); it != present_rfids.end(); ++it) {
+                if (*it == rfid) {
+                    present_rfids.erase(it);
+                    is_entry = false;
+                    break;
+                }
+            }
+
+            if (is_entry) {
+                present_rfids.push_back(rfid);
+                //std::cout << "[general] RFID: " << rfid << " entry.\n";
+            } else {
+                //std::cout << "[general] RFID: " << rfid << " exit.\n";
+            }
+
+            // Update the dashboard state with the new list of people
+            {
+                std::lock_guard<std::mutex> dash_lock(mutex_dashboard);
+                shared_dash_state.present_rfids = present_rfids;
+            }
+        }
     }
     std::cout << "[task_general] Shutting down...\n";
 }
@@ -511,14 +499,21 @@ void task_general_data() {
 
 
 int main() {
+    // This main thread initializes all others and keeps the HMI in the web page as server
+    // To connect, be on same network and connect to <RaspIP>:8080
+
     // Register the Ctrl+C signal handler
     std::signal(SIGINT, handle_sigint);
 
     // setup web server
     httplib::Server svr;
     
+    // This is run when a client connects to the page, giving them the root page.
+    // In this page there is a a place holder for the dashboard string and another for a "image".
+    // A simple JavaScript will be contantly asking for new data, so the page does not have to be refreshed
     svr.Get("/", [](const httplib::Request& req, httplib::Response& res) {
-        // We use R"( ... )" in C++ to write multi-line strings easily
+
+        // page structure
         const char* html_page = R"(
             <!DOCTYPE html>
             <html lang="en">
@@ -570,29 +565,27 @@ int main() {
         res.set_content(html_page, "text/html");
     });
 
-    // C. Add the Dashboard Text Endpoint
+    // Add the Dashboard Text Endpoint
     svr.Get("/dash_data", [](const httplib::Request& req, httplib::Response& res) {
         std::vector<TrackedObject> safe_tracks_copy;
-        float safe_ultrass_copy;
+        std::vector<uint> safe_rfids_copy; // NEW
+        float safe_ultrass = 0.0f;
 
-        // Safely lock and grab the latest dashboard data, exactly like you do in your while loop
         {
             std::lock_guard<std::mutex> dash_lock(mutex_dashboard);
             safe_tracks_copy = shared_dash_state.tracks;
-            safe_ultrass_copy = shared_dash_state.ultrass;
+            safe_ultrass = shared_dash_state.ultrass;
+            safe_rfids_copy = shared_dash_state.present_rfids; // NEW
         }
 
-        // Generate the text string
-        std::string dash_text = getDashboardString(safe_tracks_copy, safe_ultrass_copy);
-        
-        // Send it to the browser as plain text
+        std::string dash_text = getDashboardString(safe_tracks_copy, safe_ultrass, safe_rfids_copy);
         res.set_content(dash_text, "text/plain");
     });
 
-    // B. Keep your existing Video Feed Endpoint right below it
+    // Keep the existing Video Feed Endpoint updated when asked by the JavaScript
     svr.Get("/video_feed", [&](const httplib::Request& req, httplib::Response& res) {
         res.set_content_provider(
-            "multipart/x-mixed-replace; boundary=frame",
+            "multipart/x-mixed-replace; boundary=frame", // Tells the browser to keep the connection open and replacing incomming image continuosly
             [&](size_t offset, httplib::DataSink& sink) {
                 
                 while (program_running) {
@@ -608,6 +601,7 @@ int main() {
                         new_display_ready = false; 
                     }
 
+                    // Converts the image into a string to send it togheter with dashboard
                     std::vector<uchar> buf;
                     std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 80};
                     cv::imencode(".jpg", frame_to_encode, buf, params);
@@ -630,30 +624,32 @@ int main() {
 
     // start tasks
     std::thread thread_webserver([&]() { svr.listen("0.0.0.0", 8080); });
-    std::cout << "[System] MJPEG Stream active at http://192.168.1.153:8080/\n";
+    std::cout << "[main] MJPEG Stream active at http://192.168.1.153:8080/\n";
 
     std::thread thread_can(task_can_read);
     std::thread thread_lidar(task_lidar);
     std::thread thread_general(task_general_data);
 
-    std::cout << "[System] All tasks running. Press Ctrl+C to exit.\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+    std::cout << "[main] All tasks running. Press Ctrl+C to exit.\n";
 
 
-    // MAIN THREAD (CLI Dashboard Loop)
+    // This loop keeps the dashboard updated for when the web clients asks for new data.
     while (program_running) { 
         std::vector<TrackedObject> safe_tracks_copy;
-        float safe_ultrass_copy;
+        std::vector<uint> safe_rfids_copy; // NEW
+        float safe_ultrass = 0.0f;
 
         {
             std::lock_guard<std::mutex> dash_lock(mutex_dashboard);
             safe_tracks_copy = shared_dash_state.tracks;
-            safe_ultrass_copy = shared_dash_state.ultrass;
+            safe_ultrass = shared_dash_state.ultrass; 
+            safe_rfids_copy = shared_dash_state.present_rfids; // NEW
         }
 
-        printDashboard(safe_tracks_copy, safe_ultrass_copy);
+        printDashboard(safe_tracks_copy, safe_ultrass, safe_rfids_copy);
 
-        // Replace cv::waitKey(10) with standard thread sleep 
-        // Controls how fast the terminal dashboard refreshes
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     
@@ -672,31 +668,49 @@ int main() {
     if (thread_lidar.joinable()) thread_lidar.join();
     if (thread_general.joinable()) thread_general.join();
 
-    std::cout << "[System] Goodbye!\n";
+    std::cout << "[main] Goodbye!\n";
     return 0;
 }
 
 
 
-// 1. New Helper: Generates the text as a string
-std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass) {
-    std::ostringstream dash; // Works exactly like std::cout or your file stream
+// creates the string that contains the image and dashboard data
+std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids) {
+    std::ostringstream dash; 
 
-    dash << "=== ACTIVE LiDAR TRACKS ========================================================\n";
+    dash << "=== SENSOR DASHBOARD ===========================================================\n";
+    dash << "  Ultrasound Distance: " << std::fixed << std::setprecision(2) << ultrass << " cm\n";
+    
+    // Print People Inside with Name Translation
+    dash << "  People Inside: ";
+    if (present_rfids.empty()) {
+        dash << "None";
+    } else {
+        for (uint id : present_rfids) {
+            // Check if the ID exists in our map
+            auto it = rfid_names.find(id);
+            if (it != rfid_names.end()) {
+                dash << "[" << it->second << "] "; // Found it! Print the name.
+            } else {
+                dash << "[Unknown ID: " << id << "] "; // Not in map, print the raw ID.
+            }
+        }
+    }
+    dash << "\n--------------------------------------------------------------------------------\n";
+    dash << "  ACTIVE LiDAR TRACKS:\n";
     
     int visibleCount = 0;
     for (const TrackedObject& t : activeTracks) {
         if (t.untrackedSince > 0) continue;
         if (t.currentCluster.valid == false) continue;
 
-        std::string approach = "No";
-        switch(DetectOvertake(t)){
-            case(1): approach = "Right"; break;
-            case(2): approach = "Center"; break; 
-            case(3): approach = "Left";
+        std::string zone = "Safe";
+        switch(DetectZone(t)){
+            case(1): zone = "Waring..."; break;
+            case(2): zone = "DANGER!!!"; break;
         }
 
-        dash << " [ Approaching: " << std::setw(6) << approach << " ] [ ID: " << std::setw(3) << t.id << " ]  "
+        dash << " [ Zone: " << std::setw(6) << zone << " ] [ Track ID: " << std::setw(3) << t.id << " ]  "
              << "X: " << std::fixed << std::setprecision(2) << std::setw(6) << t.currentCluster.centroid.first << " m  |  "
              << "Y: " << std::fixed << std::setprecision(2) << std::setw(6) << t.currentCluster.centroid.second << " m |  "
              << "S: " << std::fixed << std::setprecision(1) << std::setw(6) << t.getAvgSpeedMod() << " m\n";
@@ -708,18 +722,16 @@ std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, f
         dash << "  No objects currently detected.\n";
     }
 
-    dash << "Ultrassonic distance(cm): " << ultrass << "\n"
-         << "================================================================================\n";
+    dash << "================================================================================\n";
     
-    return dash.str(); // Convert the stream to a standard string and return it
+    return dash.str(); 
 }
 
-// 2. Your modified original function
-void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass) {
+// Saves resulting string into a local file
+void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids) {
     std::ofstream dash("/dev/shm/lidar_dash.txt", std::ios::trunc); 
     if (dash.is_open()) {
-        // Just call the helper function and dump the string into the file!
-        dash << getDashboardString(activeTracks, ultrass);
+        dash << getDashboardString(activeTracks, ultrass, present_rfids);
         dash.close(); 
     } else {
         std::cout << "[Warning] Could not open dashboard file!\n";

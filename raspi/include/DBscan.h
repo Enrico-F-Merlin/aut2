@@ -88,7 +88,7 @@ struct TrackedObject{
 
     //RFID track creation
     TrackedObject(uint rfid_id) : id(rfid_id){
-        estPos = std::pair<float, float>(0.0f, 0.0f);
+        estPos = std::pair<float, float>{0.0f, 0.0f};
         vel.first = 0.0f;
         vel.second = 0.0f;
     }
@@ -134,6 +134,7 @@ struct Match {
 void matchClusters(std::vector<TrackedObject>& activeTracks, std::vector<DBscanCluster>& newClusters, double deltaTimeSec);
 void TrackedToImage(std::vector<DBscanPoint>& pointsCart, std::vector<TrackedObject> activeTracks, std::vector<DBscanCluster>& clusters, cv::Size imageSize, std::vector<cv::Scalar> Colours);
 int DetectOvertake(const TrackedObject& track);
+int DetectZone(const TrackedObject& track);
 
 
 #endif // DBSCAN_H
