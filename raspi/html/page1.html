@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiDAR & RFID Dashboard</title>
+    <style>
+        /* Variáveis de Cores */
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-main: #e0e0e0;
+            --text-muted: #888;
+            --accent: #00d2ff;
+            --water: #03a9f4;
+            --danger: #ff4b4b;
+            --safe: #00e676;
+            --warning: #ffb74d;
+        }
+
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: var(--bg-color); 
+            color: var(--text-main); 
+            margin: 0; 
+            padding: 20px; 
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #333;
+        }
+
+        .header h1 { margin: 0; font-size: 24px; color: var(--accent); }
+
+        .corner-btn {
+            background-color: var(--accent); /* Changes to the blue accent color */
+            color: #121212;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .corner-btn:hover { background-color: #0099cc; }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr; 
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .card h2 { margin-top: 0; font-size: 18px; color: var(--text-muted); border-bottom: 1px solid #333; padding-bottom: 10px;}
+
+        .video-container img {
+            width: 100%;
+            border-radius: 5px;
+            border: 2px solid #333;
+        }
+
+        .info-value { font-size: 24px; font-weight: bold; color: var(--accent); }
+        
+        ul.people-list { list-style-type: none; padding: 0; margin: 0; }
+        ul.people-list li {
+            background: #2a2a2a;
+            margin-bottom: 8px;
+            padding: 10px;
+            border-left: 4px solid var(--accent);
+            border-radius: 4px;
+        }
+
+        .table-container { grid-column: span 2; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #333; }
+        th { color: var(--text-muted); font-weight: normal; }
+        tbody tr:hover { background-color: #2a2a2a; }
+
+        .status-safe { color: var(--safe); font-weight: bold; }
+        .status-warning { color: var(--warning); font-weight: bold; }
+        .status-danger { color: var(--danger); font-weight: bold; }
+
+        /* Estilos do Tanque de Água / Termômetro */
+        .tank-display {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .tank-container {
+            width: 50px;
+            height: 150px;
+            background: #111;
+            border: 3px solid #555;
+            border-radius: 25px; /* Deixa arredondado como um termômetro/tanque */
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+        }
+
+        .tank-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 0%; /* Controlado pelo JS */
+            background: linear-gradient(to top, #0288d1, #29b6f6);
+            transition: height 0.4s ease-out, background 0.4s ease-out;
+            box-shadow: inset 0 5px 5px rgba(255,255,255,0.2);
+        }
+
+        /* Indicadores de nível lateral (marcas de medição) */
+        .tank-marks {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 150px;
+            color: var(--text-muted);
+            font-size: 12px;
+            padding-top: 5px;
+            padding-bottom: 5px;
+            box-sizing: border-box;
+        }
+        .tank-marks span {
+            display: flex;
+            align-items: center;
+        }
+        .tank-marks span::before {
+            content: "";
+            display: block;
+            width: 10px;
+            height: 2px;
+            background: #555;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>LiDAR Station 01</h1>
+        <button class="corner-btn" onclick="window.location.href='http://acessos.local'">MANAGE ACCESS</button>
+    </div>
+
+    <div class="dashboard-grid">
+        
+        <div class="card video-container">
+            <h2>Live Tracking Feed</h2>
+            <img src="/video_feed" alt="LiDAR Live Feed">
+        </div>
+
+        <div class="side-panel">
+            <!-- Novo Cartão do Tanque -->
+            <div class="card" style="margin-bottom: 20px;">
+                <h2>Tank Level (Ultrasound)</h2>
+                <div class="tank-display">
+                    
+                    <div class="tank-container">
+                        <div class="tank-fill" id="tank_fill"></div>
+                    </div>
+                    
+                    <div class="tank-marks">
+                        <span>100%</span>
+                        <span>75%</span>
+                        <span>50%</span>
+                        <span>25%</span>
+                        <span>0%</span>
+                    </div>
+
+                    <div style="text-align: right;">
+                        <div class="info-value" id="percent_val">--%</div>
+                        <div style="color: var(--text-muted); font-size: 14px;" id="ultra_val">Dist: -- cm</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>People Inside (RFID)</h2>
+                <ul class="people-list" id="people_list">
+                    <li>Waiting for data...</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card table-container">
+            <h2>Active LiDAR Tracks</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Zone Status</th>
+                        <th>Track ID</th>
+                        <th>X Position</th>
+                        <th>Y Position</th>
+                        <th>Est. Speed</th>
+                    </tr>
+                </thead>
+                <tbody id="track_body">
+                    <tr><td colspan="5" style="text-align:center;">Waiting for data...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // CONFIGURAÇÃO DO TANQUE: Defina aqui a distância (em cm) de quando o tanque está vazio.
+        const TANK_HEIGHT_CM = 150.0; 
+        const DEAD_ZONE_CM = 5.0; // Distância mínima que o sensor lê (tanque 100% cheio)
+
+        function parseAndUpdate(text) {
+            // 1. Atualizar Tanque / Ultrassom
+            const ultraMatch = text.match(/Ultrasound Distance:\s*([0-9.]+)\s*cm/);
+            if (ultraMatch) {
+                let distance = parseFloat(ultraMatch[1]);
+                document.getElementById('ultra_val').innerText = `Dist: ${distance.toFixed(1)} cm`;
+                
+                // Calcula a porcentagem invertendo a lógica (quanto menor a distância, maior o nível)
+                let fillPercentage = 0;
+                
+                if (distance <= DEAD_ZONE_CM) {
+                    fillPercentage = 100;
+                } else if (distance >= TANK_HEIGHT_CM) {
+                    fillPercentage = 0;
+                } else {
+                    // Mapeia a distância para 0-100%
+                    let range = TANK_HEIGHT_CM - DEAD_ZONE_CM;
+                    let currentFill = TANK_HEIGHT_CM - distance;
+                    fillPercentage = (currentFill / range) * 100;
+                }
+
+                // Atualiza a altura do CSS e o texto
+                let tankFillEl = document.getElementById('tank_fill');
+                tankFillEl.style.height = `${fillPercentage}%`;
+                document.getElementById('percent_val').innerText = `${fillPercentage.toFixed(0)}%`;
+
+                // Muda a cor para vermelho se estiver quase transbordando ou quase vazio
+                if (fillPercentage > 90) {
+                    tankFillEl.style.background = 'linear-gradient(to top, #d32f2f, #ff5252)'; // Vermelho alerta
+                } else if (fillPercentage < 10) {
+                    tankFillEl.style.background = 'linear-gradient(to top, #f57c00, #ffb74d)'; // Laranja alerta
+                } else {
+                    tankFillEl.style.background = 'linear-gradient(to top, #0288d1, #29b6f6)'; // Azul normal
+                }
+            }
+
+            // 2. Atualizar Lista de Pessoas
+            const peopleMatch = text.match(/People Inside:\s*(.*)/);
+            const peopleList = document.getElementById('people_list');
+            peopleList.innerHTML = '';
+            
+            if (peopleMatch && !peopleMatch[1].includes('None')) {
+                const people = peopleMatch[1].match(/\[(.*?)\]/g);
+                if (people) {
+                    people.forEach(p => {
+                        let li = document.createElement('li');
+                        li.innerText = p.replace('[', '').replace(']', '');
+                        peopleList.appendChild(li);
+                    });
+                }
+            } else {
+                peopleList.innerHTML = '<li style="border-left-color: #555; color: #888;">No one inside</li>';
+            }
+
+            // 3. Atualizar Tabela de Tracks
+            const trackTable = document.getElementById('track_body');
+            trackTable.innerHTML = '';
+            
+            const trackRegex = /\[ Zone:\s*(.*?)\s*\] \[ Track ID:\s*(\d+)\s*\]\s*X:\s*([-\d.]+)\s*m\s*\|\s*Y:\s*([-\d.]+)\s*m\s*\|\s*S:\s*([-\d.]+)\s*m/g;
+            let match;
+            let foundTracks = false;
+
+            while ((match = trackRegex.exec(text)) !== null) {
+                foundTracks = true;
+                let tr = document.createElement('tr');
+                
+                let zoneStr = match[1].trim();
+                let statusClass = "status-safe";
+                if (zoneStr.includes("Waring")) statusClass = "status-warning";
+                if (zoneStr.includes("DANGER")) statusClass = "status-danger";
+                
+                tr.innerHTML = `
+                    <td class="${statusClass}">${zoneStr}</td>
+                    <td>#${match[2]}</td>
+                    <td>${match[3]} m</td>
+                    <td>${match[4]} m</td>
+                    <td>${match[5]} m/s</td>
+                `;
+                trackTable.appendChild(tr);
+            }
+
+            if (!foundTracks) {
+                trackTable.innerHTML = '<tr><td colspan="5" style="text-align:center; color: #888;">No objects currently detected.</td></tr>';
+            }
+        }
+
+        setInterval(() => {
+            fetch('/dash_data')
+                .then(response => response.text())
+                .then(text => {
+                    parseAndUpdate(text);
+                })
+                .catch(err => console.log("Connection error..."));
+        }, 100); 
+    </script>
+</body>
+</html>

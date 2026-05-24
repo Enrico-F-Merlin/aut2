@@ -31,6 +31,9 @@
 #define ID_ULTRASS  0x020
 #define ID_RFID     0x030
 
+int global_can0_fd = -1;
+int global_can1_fd = -1;
+
 
 // task_lidar configuration
 #define LIDAR_UPSIDE_DOWN true
@@ -56,6 +59,8 @@ std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, f
 
 // Saves the dashboard string into a local file for logging pourposes. I think is also overkill for the projects
 void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids);
+
+bool init_can_sockets();
 
 // Struct with coontrolled access data that is shared by all threads. Saves the state that should be updated into dashboard.
 struct DashboardState {
@@ -99,35 +104,6 @@ void handle_sigint(int sig) {
 void task_can_read() {
     std::cout << "[task_can_read] Starting....\n";
 
-    std::string interface = "can0";
-
-    int can0_socket_fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
-    if (can0_socket_fd < 0) {
-        std::cout << "[task_can_read] Failed input socket initialization (1).\n";
-        return;
-    }
-    
-    struct ifreq ifr;
-    std::strncpy(ifr.ifr_name, interface.c_str(), IFNAMSIZ - 1);
-
-    if (ioctl(can0_socket_fd, SIOCGIFINDEX, &ifr) < 0){
-        std::cout << "[task_can_read] Failed input socket initialization (2).\n";
-        close(can0_socket_fd);
-        return;
-    }
-
-    struct sockaddr_can addr;
-    std::memset(&addr, 0, sizeof(addr));
-
-    addr.can_family = AF_CAN;
-    addr.can_ifindex = ifr.ifr_ifindex;
-
-    if (bind(can0_socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        std::cout << "[task_can_read] Failed input socket initialization (3).\n"; 
-        close(can0_socket_fd);
-        return;
-    }
-
     struct can_frame inFrame;
 
     // Local variables for Lidar Assembly
@@ -138,7 +114,7 @@ void task_can_read() {
     while (program_running) {
 
         // read() is a blocking call. If Ctrl+C is pressed and LiDAR is off program will freeze.
-        int nbytes = read(can0_socket_fd, &inFrame, sizeof(struct can_frame));
+        int nbytes = read(global_can0_fd, &inFrame, sizeof(struct can_frame));
 
         if (nbytes <= 0) {
             // Check if we failed to read because the program is shutting down
@@ -236,7 +212,6 @@ void task_can_read() {
     }
     
     std::cout << "[task_can_read] Shutting down socket...\n";
-    close(can0_socket_fd);
 }
 
 
@@ -505,64 +480,30 @@ int main() {
     // Register the Ctrl+C signal handler
     std::signal(SIGINT, handle_sigint);
 
+    if (!init_can_sockets()) {
+        std::cout << "[System] Failed to initialize CAN sockets. Exiting.\n";
+        return -1;
+    }
+
     // setup web server
     httplib::Server svr;
     
     // This is run when a client connects to the page, giving them the root page.
     // In this page there is a a place holder for the dashboard string and another for a "image".
     // A simple JavaScript will be contantly asking for new data, so the page does not have to be refreshed
+    // This is run when a client connects to the page, giving them the root page.
     svr.Get("/", [](const httplib::Request& req, httplib::Response& res) {
-
-        // page structure
-        const char* html_page = R"(
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Pi Dashboard</title>
-                <style>
-                    body { font-family: sans-serif; text-align: center; background: #222; color: white; margin-top: 20px; }
-                    img { border: 5px solid #555; border-radius: 10px; width: 100%; max-width: 800px; box-shadow: 0 4px 8px rgba(0,0,0,0.5); }
-                    
-                    /* Styling to make the text look like a cool terminal */
-                    pre { 
-                        background: #000; 
-                        color: #0f0; /* Hacker green */
-                        padding: 20px; 
-                        border-radius: 10px; 
-                        text-align: left; 
-                        display: inline-block; 
-                        font-size: 16px; 
-                        margin-top: 20px;
-                        overflow-x: auto;
-                    }
-                </style>
-            </head>
-            <body>
-                <h1>LiDAR Live Dashboard</h1>
-                <img src="/video_feed" alt="Live Feed"><br>
-                
-                <!-- The text will be injected here -->
-                <pre id="dash_text">Waiting for LiDAR data...</pre>
-
-                <script>
-                    // Ask the C++ server for the text every 100 milliseconds
-                    setInterval(() => {
-                        fetch('/dash_data')
-                            .then(response => response.text())
-                            .then(text => {
-                                // Update the HTML element with the new text
-                                document.getElementById('dash_text').innerText = text;
-                            });
-                    }, 100); // 100ms = 10 updates per second
-                </script>
-            </body>
-            </html>
-        )";
+        std::ifstream file("/home/nap/Desktop/aut2/raspi/html/page1.html");
         
-        // Send the HTML to the browser
-        res.set_content(html_page, "text/html");
+        if (file.is_open()) {
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            res.set_content(buffer.str(), "text/html");
+        } else {
+            // Fallback in case the file is missing or path is wrong
+            res.status = 404;
+            res.set_content("<h1>404 Not Found</h1><p>index.html is missing.</p>", "text/html");
+        }
     });
 
     // Add the Dashboard Text Endpoint
@@ -624,7 +565,7 @@ int main() {
 
     // start tasks
     std::thread thread_webserver([&]() { svr.listen("0.0.0.0", 8080); });
-    std::cout << "[main] MJPEG Stream active at http://192.168.1.153:8080/\n";
+    std::cout << "[main] MJPEG Stream active at http://rpi-756:8080/\n";
 
     std::thread thread_can(task_can_read);
     std::thread thread_lidar(task_lidar);
@@ -667,6 +608,8 @@ int main() {
     if (thread_can.joinable()) thread_can.join();
     if (thread_lidar.joinable()) thread_lidar.join();
     if (thread_general.joinable()) thread_general.join();
+
+    close(global_can0_fd);
 
     std::cout << "[main] Goodbye!\n";
     return 0;
@@ -736,4 +679,50 @@ void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultras
     } else {
         std::cout << "[Warning] Could not open dashboard file!\n";
     }
+}
+
+bool init_can_sockets() {
+    // initialize can0
+    global_can0_fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
+    if (global_can0_fd < 0) return false;
+
+    struct ifreq ifr0;
+    std::strncpy(ifr0.ifr_name, "can0", IFNAMSIZ - 1);
+    if (ioctl(global_can0_fd, SIOCGIFINDEX, &ifr0) < 0) return false;
+
+    struct sockaddr_can addr0;
+    std::memset(&addr0, 0, sizeof(addr0));
+    addr0.can_family = AF_CAN;
+    addr0.can_ifindex = ifr0.ifr_ifindex;
+
+    if (bind(global_can0_fd, (struct sockaddr *)&addr0, sizeof(addr0)) < 0) return false;
+
+    // initialize can1
+    global_can1_fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
+    if (global_can1_fd < 0) return false;
+
+    struct ifreq ifr1;
+    std::strncpy(ifr1.ifr_name, "can1", IFNAMSIZ - 1);
+    if (ioctl(global_can1_fd, SIOCGIFINDEX, &ifr1) < 0) return false;
+
+    struct sockaddr_can addr1;
+    std::memset(&addr1, 0, sizeof(addr1));
+    addr1.can_family = AF_CAN;
+    addr1.can_ifindex = ifr1.ifr_ifindex;
+
+    if (bind(global_can1_fd, (struct sockaddr *)&addr1, sizeof(addr1)) < 0) return false;
+
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 100000; // 100 milliseconds timeout
+
+    // apply Read and Write timeouts to can0
+    setsockopt(global_can0_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    setsockopt(global_can0_fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+
+    // apply Read and Write timeouts to can1
+    setsockopt(global_can1_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    setsockopt(global_can1_fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+
+    return true;
 }
