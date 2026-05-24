@@ -36,7 +36,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     <h2>Sistema de Monitorização - Controlo de Acesso</h2>
     
-    <a href="http://lidar.local" class="btn btn-nav" style="margin-bottom: 20px;">Ver Mapa dinâmico da sala</a>
+   <a href="http://rpi-756.local:8080" class="btn btn-add" style="margin-bottom: 20px; text-decoration: none; display: inline-block;">Ver Mapa Dinâmico da Sala</a>
     
     %MENSAGEM%
 
@@ -49,7 +49,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <form action="/adicionar" method="POST">
             <div class="form-group">
                 <label>Identificador: </label>
-                <input type="text" name="id_form" required maxlength="6" minlength="6" pattern="[0-9]{6}">
+                <input type="text" name="id_form" required maxlength="8" minlength="1">
             </div>
             <div class="form-group">
                 <label>Nome: </label>
@@ -68,7 +68,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <form action="/alterar" method="POST">
             <div class="form-group">
                 <label>Identificador: </label>
-                <input type="text" name="id_alterar" required maxlength="6" minlength="6" pattern="[0-9]{6}">
+                <input type="text" name="id_alterar" required maxlength="8" minlength="1">
             </div>
             <div class="form-group">
                 <label>Novo Contacto: </label>
@@ -83,7 +83,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <form action="/remover" method="POST">
             <div class="form-group">
                 <label>Identificador: </label>
-                <input type="text" name="id_remover" required maxlength="6" minlength="6" pattern="[0-9]{6}">
+                <input type="text" name="id_remover" required maxlength="8" minlength="1">
             </div>
             <input type="submit" class="btn btn-remove" value="Remover Acesso">
         </form>

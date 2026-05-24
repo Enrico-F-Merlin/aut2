@@ -237,5 +237,50 @@ void setup() {
 }
 
 void loop() {
-  server.handleClient();
+  server.handleClient(); 
+
+  static unsigned long lastAttemptTime = 0;
+  unsigned long now = millis();
+
+  if (now - lastAttemptTime > 2000) {
+    lastAttemptTime = now;
+
+    // Falta o código da leitura real do RFID
+    String ID_Lido = "";
+    
+    if (ID_Lido != "") {
+      Serial.println("\nCartão detetado: " + ID_Lido);
+      
+      // 1. Valida o ID
+      bool temAcesso = false;
+      String nomeDaPessoa = "Desconhecido";
+      
+      for(int i = 0; i < MAX_UTILIZADORES; i++) {
+        if(listaUtilizadores[i].id == ID_Lido && listaUtilizadores[i].id != "") {
+          temAcesso = true;
+          nomeDaPessoa = listaUtilizadores[i].nome; 
+          break;
+        }
+      }
+
+      registarPassagemFisica(ID_Lido);
+
+      // 2. Comunica com a RaspberryPi
+      WiFiClient rfidClient;
+      if (rfidClient.connect("rpi-756.local", 8080)) {
+        
+        if (temAcesso) {
+          Serial.println("Acesso PERMITIDO para " + nomeDaPessoa);
+          rfidClient.println("AUTORIZADO:" + ID_Lido + ":" + nomeDaPessoa); 
+        } else {
+          Serial.println("Acesso RECUSADO");
+          rfidClient.println("NEGADO:" + ID_Lido + ":Desconhecido");
+        }
+        
+        rfidClient.stop();
+      } else {
+        Serial.println("Erro na comunicação com a RPi");
+      }
+    }
+  } 
 }
