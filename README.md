@@ -17,15 +17,15 @@ O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barra
 3. Após a entrada na sala, um sensor LiDAR mapeia a posição da pessoa em tempo real para averiguar em que zona ela se encontra.
 4. Conforme a posição, o sistema reage autonomamente ativando uma luz que indica o risco a que a pessoa está sujeita.
 
-**Materiais e Recursos**
-**- Raspberry Pi:** Atua como computador central
-**- Sensor LIDAR:** Recurso para identificação e monitorização de coordenadas em tempo real.
-**- RFID:** Utilizado para o controle de acesso e identificação de utilizadores.
-**- Microcontrolador:** Responsável por ler o sensor RFID, verificar se o utilizador está ou não autorizado e comunicar via CAN Bus.
-**- Sinalizadores Físicos:** LED para indicação visual da violação da zona de perigo.
-**- HTTP (Wi-Fi):** Protocolo base para comunicação do computador central com a HMI.
-**- Barramento CAN:** Utilizado para a comunicação entre a unidade central com os periféricos (sensores e atuadores) e pela ESP32 com a Raspberry.
-**- HTML:** Linguagem estrutural utilizada para apresentar os dados e autorizar IDs de forma dinâmica.
+## Materiais e Recursos
+** - Raspberry Pi:** Atua como computador central
+** - Sensor LIDAR:** Recurso para identificação e monitorização de coordenadas em tempo real.
+** - RFID:** Utilizado para o controle de acesso e identificação de utilizadores.
+** - Microcontrolador:** Responsável por ler o sensor RFID, verificar se o utilizador está ou não autorizado e comunicar via CAN Bus.
+** - Sinalizadores Físicos:** LED para indicação visual da violação da zona de perigo.
+** - HTTP (Wi-Fi):** Protocolo base para comunicação do computador central com a HMI.
+** - Barramento CAN:** Utilizado para a comunicação entre a unidade central com os periféricos (sensores e atuadores) e pela ESP32 com a Raspberry.
+** - HTML:** Linguagem estrutural utilizada para apresentar os dados e autorizar IDs de forma dinâmica.
 
 ## Descrição do Sistema
 
