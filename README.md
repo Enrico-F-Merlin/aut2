@@ -18,14 +18,14 @@ O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barra
 4. Conforme a posição, o sistema reage autonomamente ativando uma luz que indica o risco a que a pessoa está sujeita.
 
 ## Materiais e Recursos
-** - Raspberry Pi:** Atua como computador central
-** - Sensor LIDAR:** Recurso para identificação e monitorização de coordenadas em tempo real.
-** - RFID:** Utilizado para o controle de acesso e identificação de utilizadores.
-** - Microcontrolador:** Responsável por ler o sensor RFID, verificar se o utilizador está ou não autorizado e comunicar via CAN Bus.
-** - Sinalizadores Físicos:** LED para indicação visual da violação da zona de perigo.
-** - HTTP (Wi-Fi):** Protocolo base para comunicação do computador central com a HMI.
-** - Barramento CAN:** Utilizado para a comunicação entre a unidade central com os periféricos (sensores e atuadores) e pela ESP32 com a Raspberry.
-** - HTML:** Linguagem estrutural utilizada para apresentar os dados e autorizar IDs de forma dinâmica.
+- **Raspberry Pi:** Atua como computador central
+- **Sensor LIDAR:** Recurso para identificação e monitorização de coordenadas em tempo real.
+- **RFID:** Utilizado para o controle de acesso e identificação de utilizadores.
+- **Microcontrolador:** Responsável por ler o sensor RFID, verificar se o utilizador está ou não autorizado e comunicar via CAN Bus.
+- **Sinalizadores Físicos:** LED para indicação visual da violação da zona de perigo.
+- **HTTP (Wi-Fi):** Protocolo base para comunicação do computador central com a HMI.
+- **Barramento CAN:** Utilizado para a comunicação entre a unidade central com os periféricos (sensores e atuadores) e pela ESP32 com a Raspberry.
+- **HTML:** Linguagem estrutural utilizada para apresentar os dados e autorizar IDs de forma dinâmica.
 
 ## Descrição do Sistema
 
@@ -53,7 +53,7 @@ A parte física do sistema é formada por um conjunto de sensores
 
 **Sinalizadores Físicos** - Os leds vão ser usados como indicadores visuais de perigo.
 
-##Lógica de Controlo e Segurança 
+## Lógica de Controlo e Segurança 
 
 **Validação (Dinâmica) de IDs:** Camada de segurança que verifica o ID e permite ou rejeita a entrada com base nos IDs autorizados.
 **Processamento de Sinais:** Conversão das leituras do LIDAR em zonas lógicas:
