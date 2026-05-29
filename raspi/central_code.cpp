@@ -29,7 +29,10 @@
 // incoming CAN frame IDs ("can0" 500KBPS extended CAN)
 #define ID_LIDAR    0x010
 #define ID_ULTRASS  0x020
-#define ID_RFID     0x030
+//#define ID_RFID     0x030
+
+int global_can0_fd = -1;
+int global_can1_fd = -1;
 
 
 // task_lidar configuration
@@ -44,24 +47,29 @@ static constexpr float SECTOR_ANGLE_RAD = M_PI / 180.0f * (VALID_LIDAR_CONE_ANGL
 static constexpr int MESSAGE_SIZE = 2 * NUMBER_OF_SECTORS + 4;
 
 
-// Map of allowed UIDs from RFID readings
-const std::unordered_map<uint, std::string> rfid_names = {
-    // Beware that the UIDs are read backwards (ex: Enrico <- CAN : 59 C4 11 07)
-    {0x0711C459, "Enrico"}, //card
-    {0X0728AECB, "Iara"},   //blue tag
-};
+// // Map of allowed UIDs from RFID readings
+// const std::unordered_map<uint, std::string> rfid_names = {
+//     // Beware that the UIDs are read backwards (ex: Enrico <- CAN : 59 C4 11 07)
+//     {0x0711C459, "Enrico"}, //card
+//     {0X0728AECB, "Iara"},   //blue tag
+// };
 
 // Generates the string that will be showed at the web page's dashboard
-std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids);
+//std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids);
+std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass);
 
 // Saves the dashboard string into a local file for logging pourposes. I think is also overkill for the projects
-void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids);
+//void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids);
+void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass);
+
+
+bool init_can_sockets();
 
 // Struct with coontrolled access data that is shared by all threads. Saves the state that should be updated into dashboard.
 struct DashboardState {
     std::vector<TrackedObject> tracks;
     float ultrass = 0.0f;
-    std::vector<uint> present_rfids;
+    //std::vector<uint> present_rfids;
 };
 
 std::mutex mutex_dashboard;
@@ -73,10 +81,10 @@ struct InFrames {
     std::array<uint8_t, MESSAGE_SIZE> lidar_message; 
 
     struct can_frame closestObject  = {};
-    struct can_frame rfid     = {};
+    //struct can_frame rfid     = {};
 
     bool has_new_lidar   = false;
-    bool has_new_rfid    = false;
+    //bool has_new_rfid    = false;
     bool has_new_ultrass = false;
 };
 
@@ -99,35 +107,6 @@ void handle_sigint(int sig) {
 void task_can_read() {
     std::cout << "[task_can_read] Starting....\n";
 
-    std::string interface = "can0";
-
-    int can0_socket_fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
-    if (can0_socket_fd < 0) {
-        std::cout << "[task_can_read] Failed input socket initialization (1).\n";
-        return;
-    }
-    
-    struct ifreq ifr;
-    std::strncpy(ifr.ifr_name, interface.c_str(), IFNAMSIZ - 1);
-
-    if (ioctl(can0_socket_fd, SIOCGIFINDEX, &ifr) < 0){
-        std::cout << "[task_can_read] Failed input socket initialization (2).\n";
-        close(can0_socket_fd);
-        return;
-    }
-
-    struct sockaddr_can addr;
-    std::memset(&addr, 0, sizeof(addr));
-
-    addr.can_family = AF_CAN;
-    addr.can_ifindex = ifr.ifr_ifindex;
-
-    if (bind(can0_socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        std::cout << "[task_can_read] Failed input socket initialization (3).\n"; 
-        close(can0_socket_fd);
-        return;
-    }
-
     struct can_frame inFrame;
 
     // Local variables for Lidar Assembly
@@ -138,7 +117,7 @@ void task_can_read() {
     while (program_running) {
 
         // read() is a blocking call. If Ctrl+C is pressed and LiDAR is off program will freeze.
-        int nbytes = read(can0_socket_fd, &inFrame, sizeof(struct can_frame));
+        int nbytes = read(global_can0_fd, &inFrame, sizeof(struct can_frame));
 
         if (nbytes <= 0) {
             // Check if we failed to read because the program is shutting down
@@ -200,17 +179,17 @@ void task_can_read() {
                 }
                 break;
             }
-            case ID_RFID: {
-                // Update most recent RFID frame on global buffer and notify task_general_data() of update
+            // case ID_RFID: {
+            //     // Update most recent RFID frame on global buffer and notify task_general_data() of update
 
-                {
-                    std::lock_guard<std::mutex> lock(mutex_inFrames);
-                    in_frame_buffer.rfid = inFrame;
-                    in_frame_buffer.has_new_rfid = true;
-                }
-                notify_general = true;
-                break;
-            }
+            //     {
+            //         std::lock_guard<std::mutex> lock(mutex_inFrames);
+            //         in_frame_buffer.rfid = inFrame;
+            //         in_frame_buffer.has_new_rfid = true;
+            //     }
+            //     notify_general = true;
+            //     break;
+            // }
             case ID_ULTRASS: {
                 // Same as above
 
@@ -236,7 +215,6 @@ void task_can_read() {
     }
     
     std::cout << "[task_can_read] Shutting down socket...\n";
-    close(can0_socket_fd);
 }
 
 
@@ -431,24 +409,25 @@ void task_general_data() {
     std::cout << "[task_general] Starting...\n";
 
     // Local list to remember who is currently checked in
-    std::vector<uint> present_rfids; 
+    //std::vector<uint> present_rfids; 
 
     while (program_running) {
         std::unique_lock<std::mutex> lock(mutex_inFrames);
 
         cv_general.wait(lock, []{ 
-            return in_frame_buffer.has_new_rfid || in_frame_buffer.has_new_ultrass || !program_running; 
+            //return in_frame_buffer.has_new_rfid || in_frame_buffer.has_new_ultrass || !program_running;
+            return in_frame_buffer.has_new_ultrass || !program_running;
         });
 
         if (!program_running) break;
 
-        bool process_rfid = in_frame_buffer.has_new_rfid;
+        //bool process_rfid = in_frame_buffer.has_new_rfid;
         bool process_ultrass = in_frame_buffer.has_new_ultrass;
 
-        struct can_frame local_rfid = in_frame_buffer.rfid;
+        //struct can_frame local_rfid = in_frame_buffer.rfid;
         struct can_frame local_ultrass = in_frame_buffer.closestObject;
 
-        in_frame_buffer.has_new_rfid = false; 
+        //in_frame_buffer.has_new_rfid = false; 
         in_frame_buffer.has_new_ultrass = false;
 
         lock.unlock();
@@ -463,34 +442,34 @@ void task_general_data() {
         }
 
         // Process RFID
-        if (process_rfid) {
-            uint rfid = 0;
-            std::memcpy(&rfid, local_rfid.data, sizeof(uint));
+    //     if (process_rfid) {
+    //         uint rfid = 0;
+    //         std::memcpy(&rfid, local_rfid.data, sizeof(uint));
 
-            bool is_entry = true;
+    //         bool is_entry = true;
 
-            // Toggle entry/exit in our local list
-            for (auto it = present_rfids.begin(); it != present_rfids.end(); ++it) {
-                if (*it == rfid) {
-                    present_rfids.erase(it);
-                    is_entry = false;
-                    break;
-                }
-            }
+    //         // Toggle entry/exit in our local list
+    //         for (auto it = present_rfids.begin(); it != present_rfids.end(); ++it) {
+    //             if (*it == rfid) {
+    //                 present_rfids.erase(it);
+    //                 is_entry = false;
+    //                 break;
+    //             }
+    //         }
 
-            if (is_entry) {
-                present_rfids.push_back(rfid);
-                //std::cout << "[general] RFID: " << rfid << " entry.\n";
-            } else {
-                //std::cout << "[general] RFID: " << rfid << " exit.\n";
-            }
+    //         if (is_entry) {
+    //             present_rfids.push_back(rfid);
+    //             //std::cout << "[general] RFID: " << rfid << " entry.\n";
+    //         } else {
+    //             //std::cout << "[general] RFID: " << rfid << " exit.\n";
+    //         }
 
-            // Update the dashboard state with the new list of people
-            {
-                std::lock_guard<std::mutex> dash_lock(mutex_dashboard);
-                shared_dash_state.present_rfids = present_rfids;
-            }
-        }
+    //         // Update the dashboard state with the new list of people
+    //         {
+    //             std::lock_guard<std::mutex> dash_lock(mutex_dashboard);
+    //             shared_dash_state.present_rfids = present_rfids;
+    //         }
+    //     }
     }
     std::cout << "[task_general] Shutting down...\n";
 }
@@ -505,80 +484,46 @@ int main() {
     // Register the Ctrl+C signal handler
     std::signal(SIGINT, handle_sigint);
 
+    if (!init_can_sockets()) {
+        std::cout << "[System] Failed to initialize CAN sockets. Exiting.\n";
+        return -1;
+    }
+
     // setup web server
     httplib::Server svr;
     
     // This is run when a client connects to the page, giving them the root page.
     // In this page there is a a place holder for the dashboard string and another for a "image".
     // A simple JavaScript will be contantly asking for new data, so the page does not have to be refreshed
+    // This is run when a client connects to the page, giving them the root page.
     svr.Get("/", [](const httplib::Request& req, httplib::Response& res) {
-
-        // page structure
-        const char* html_page = R"(
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Pi Dashboard</title>
-                <style>
-                    body { font-family: sans-serif; text-align: center; background: #222; color: white; margin-top: 20px; }
-                    img { border: 5px solid #555; border-radius: 10px; width: 100%; max-width: 800px; box-shadow: 0 4px 8px rgba(0,0,0,0.5); }
-                    
-                    /* Styling to make the text look like a cool terminal */
-                    pre { 
-                        background: #000; 
-                        color: #0f0; /* Hacker green */
-                        padding: 20px; 
-                        border-radius: 10px; 
-                        text-align: left; 
-                        display: inline-block; 
-                        font-size: 16px; 
-                        margin-top: 20px;
-                        overflow-x: auto;
-                    }
-                </style>
-            </head>
-            <body>
-                <h1>LiDAR Live Dashboard</h1>
-                <img src="/video_feed" alt="Live Feed"><br>
-                
-                <!-- The text will be injected here -->
-                <pre id="dash_text">Waiting for LiDAR data...</pre>
-
-                <script>
-                    // Ask the C++ server for the text every 100 milliseconds
-                    setInterval(() => {
-                        fetch('/dash_data')
-                            .then(response => response.text())
-                            .then(text => {
-                                // Update the HTML element with the new text
-                                document.getElementById('dash_text').innerText = text;
-                            });
-                    }, 100); // 100ms = 10 updates per second
-                </script>
-            </body>
-            </html>
-        )";
+        std::ifstream file("/home/nap/Desktop/aut2/raspi/html/page1.html");
         
-        // Send the HTML to the browser
-        res.set_content(html_page, "text/html");
+        if (file.is_open()) {
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            res.set_content(buffer.str(), "text/html");
+        } else {
+            // Fallback in case the file is missing or path is wrong
+            res.status = 404;
+            res.set_content("<h1>404 Not Found</h1><p>index.html is missing.</p>", "text/html");
+        }
     });
 
     // Add the Dashboard Text Endpoint
     svr.Get("/dash_data", [](const httplib::Request& req, httplib::Response& res) {
         std::vector<TrackedObject> safe_tracks_copy;
-        std::vector<uint> safe_rfids_copy; // NEW
+        //std::vector<uint> safe_rfids_copy; // NEW
         float safe_ultrass = 0.0f;
 
         {
             std::lock_guard<std::mutex> dash_lock(mutex_dashboard);
             safe_tracks_copy = shared_dash_state.tracks;
             safe_ultrass = shared_dash_state.ultrass;
-            safe_rfids_copy = shared_dash_state.present_rfids; // NEW
+            //safe_rfids_copy = shared_dash_state.present_rfids; // NEW
         }
 
-        std::string dash_text = getDashboardString(safe_tracks_copy, safe_ultrass, safe_rfids_copy);
+        std::string dash_text = getDashboardString(safe_tracks_copy, safe_ultrass);
         res.set_content(dash_text, "text/plain");
     });
 
@@ -624,7 +569,7 @@ int main() {
 
     // start tasks
     std::thread thread_webserver([&]() { svr.listen("0.0.0.0", 8080); });
-    std::cout << "[main] MJPEG Stream active at http://192.168.1.153:8080/\n";
+    std::cout << "[main] MJPEG Stream active at http://rpi-756.local:8080/\n";
 
     std::thread thread_can(task_can_read);
     std::thread thread_lidar(task_lidar);
@@ -638,17 +583,17 @@ int main() {
     // This loop keeps the dashboard updated for when the web clients asks for new data.
     while (program_running) { 
         std::vector<TrackedObject> safe_tracks_copy;
-        std::vector<uint> safe_rfids_copy; // NEW
+        //std::vector<uint> safe_rfids_copy; // NEW
         float safe_ultrass = 0.0f;
 
         {
             std::lock_guard<std::mutex> dash_lock(mutex_dashboard);
             safe_tracks_copy = shared_dash_state.tracks;
             safe_ultrass = shared_dash_state.ultrass; 
-            safe_rfids_copy = shared_dash_state.present_rfids; // NEW
+            //safe_rfids_copy = shared_dash_state.present_rfids; // NEW
         }
 
-        printDashboard(safe_tracks_copy, safe_ultrass, safe_rfids_copy);
+        printDashboard(safe_tracks_copy, safe_ultrass);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -668,6 +613,8 @@ int main() {
     if (thread_lidar.joinable()) thread_lidar.join();
     if (thread_general.joinable()) thread_general.join();
 
+    close(global_can0_fd);
+
     std::cout << "[main] Goodbye!\n";
     return 0;
 }
@@ -675,27 +622,28 @@ int main() {
 
 
 // creates the string that contains the image and dashboard data
-std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids) {
+//std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids) {
+std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass) {
     std::ostringstream dash; 
 
     dash << "=== SENSOR DASHBOARD ===========================================================\n";
     dash << "  Ultrasound Distance: " << std::fixed << std::setprecision(2) << ultrass << " cm\n";
     
-    // Print People Inside with Name Translation
-    dash << "  People Inside: ";
-    if (present_rfids.empty()) {
-        dash << "None";
-    } else {
-        for (uint id : present_rfids) {
-            // Check if the ID exists in our map
-            auto it = rfid_names.find(id);
-            if (it != rfid_names.end()) {
-                dash << "[" << it->second << "] "; // Found it! Print the name.
-            } else {
-                dash << "[Unknown ID: " << id << "] "; // Not in map, print the raw ID.
-            }
-        }
-    }
+    // // Print People Inside with Name Translation
+    // dash << "  People Inside: ";
+    // if (present_rfids.empty()) {
+    //     dash << "None";
+    // } else {
+    //     for (uint id : present_rfids) {
+    //         // Check if the ID exists in our map
+    //         auto it = rfid_names.find(id);
+    //         if (it != rfid_names.end()) {
+    //             dash << "[" << it->second << "] "; // Found it! Print the name.
+    //         } else {
+    //             dash << "[Unknown ID: " << id << "] "; // Not in map, print the raw ID.
+    //         }
+    //     }
+    // }
     dash << "\n--------------------------------------------------------------------------------\n";
     dash << "  ACTIVE LiDAR TRACKS:\n";
     
@@ -728,12 +676,60 @@ std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, f
 }
 
 // Saves resulting string into a local file
-void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids) {
+//void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids) {
+void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass) {
     std::ofstream dash("/dev/shm/lidar_dash.txt", std::ios::trunc); 
     if (dash.is_open()) {
-        dash << getDashboardString(activeTracks, ultrass, present_rfids);
+        //dash << getDashboardString(activeTracks, ultrass, present_rfids);
+        dash << getDashboardString(activeTracks, ultrass);
         dash.close(); 
     } else {
         std::cout << "[Warning] Could not open dashboard file!\n";
     }
+}
+
+bool init_can_sockets() {
+    // initialize can0
+    global_can0_fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
+    if (global_can0_fd < 0) return false;
+
+    struct ifreq ifr0;
+    std::strncpy(ifr0.ifr_name, "can0", IFNAMSIZ - 1);
+    if (ioctl(global_can0_fd, SIOCGIFINDEX, &ifr0) < 0) return false;
+
+    struct sockaddr_can addr0;
+    std::memset(&addr0, 0, sizeof(addr0));
+    addr0.can_family = AF_CAN;
+    addr0.can_ifindex = ifr0.ifr_ifindex;
+
+    if (bind(global_can0_fd, (struct sockaddr *)&addr0, sizeof(addr0)) < 0) return false;
+
+    // initialize can1
+    global_can1_fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
+    if (global_can1_fd < 0) return false;
+
+    struct ifreq ifr1;
+    std::strncpy(ifr1.ifr_name, "can1", IFNAMSIZ - 1);
+    if (ioctl(global_can1_fd, SIOCGIFINDEX, &ifr1) < 0) return false;
+
+    struct sockaddr_can addr1;
+    std::memset(&addr1, 0, sizeof(addr1));
+    addr1.can_family = AF_CAN;
+    addr1.can_ifindex = ifr1.ifr_ifindex;
+
+    if (bind(global_can1_fd, (struct sockaddr *)&addr1, sizeof(addr1)) < 0) return false;
+
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 100000; // 100 milliseconds timeout
+
+    // apply Read and Write timeouts to can0
+    setsockopt(global_can0_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    setsockopt(global_can0_fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+
+    // apply Read and Write timeouts to can1
+    setsockopt(global_can1_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    setsockopt(global_can1_fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+
+    return true;
 }
