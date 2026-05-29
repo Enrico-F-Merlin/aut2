@@ -34,9 +34,6 @@
 int global_can0_fd = -1;
 int global_can1_fd = -1;
 
-int global_can0_fd = -1;
-int global_can1_fd = -1;
-
 
 // task_lidar configuration
 #define LIDAR_UPSIDE_DOWN true
@@ -689,52 +686,6 @@ void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultras
     } else {
         std::cout << "[Warning] Could not open dashboard file!\n";
     }
-}
-
-bool init_can_sockets() {
-    // initialize can0
-    global_can0_fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
-    if (global_can0_fd < 0) return false;
-
-    struct ifreq ifr0;
-    std::strncpy(ifr0.ifr_name, "can0", IFNAMSIZ - 1);
-    if (ioctl(global_can0_fd, SIOCGIFINDEX, &ifr0) < 0) return false;
-
-    struct sockaddr_can addr0;
-    std::memset(&addr0, 0, sizeof(addr0));
-    addr0.can_family = AF_CAN;
-    addr0.can_ifindex = ifr0.ifr_ifindex;
-
-    if (bind(global_can0_fd, (struct sockaddr *)&addr0, sizeof(addr0)) < 0) return false;
-
-    // initialize can1
-    global_can1_fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
-    if (global_can1_fd < 0) return false;
-
-    struct ifreq ifr1;
-    std::strncpy(ifr1.ifr_name, "can1", IFNAMSIZ - 1);
-    if (ioctl(global_can1_fd, SIOCGIFINDEX, &ifr1) < 0) return false;
-
-    struct sockaddr_can addr1;
-    std::memset(&addr1, 0, sizeof(addr1));
-    addr1.can_family = AF_CAN;
-    addr1.can_ifindex = ifr1.ifr_ifindex;
-
-    if (bind(global_can1_fd, (struct sockaddr *)&addr1, sizeof(addr1)) < 0) return false;
-
-    struct timeval tv;
-    tv.tv_sec = 0;
-    tv.tv_usec = 100000; // 100 milliseconds timeout
-
-    // apply Read and Write timeouts to can0
-    setsockopt(global_can0_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
-    setsockopt(global_can0_fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
-
-    // apply Read and Write timeouts to can1
-    setsockopt(global_can1_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
-    setsockopt(global_can1_fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
-
-    return true;
 }
 
 bool init_can_sockets() {
