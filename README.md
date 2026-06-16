@@ -84,7 +84,7 @@ Os dados desta página são guardados na memória não-volátil da ESP32, garant
 ### Tecnologias
 **C++:** 
 **Python:** 
-**HTML/CSS:** 
+**HTML/CSS:**
 **Mosquitto (Broker MQTT):??**
 
 
