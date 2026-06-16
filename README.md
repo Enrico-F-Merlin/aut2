@@ -6,14 +6,14 @@
 
 A sensorização é uma parte muito importante do ambiente fabril, não só nas linhas de produção, como componente nuclear do processo de automação, mas também no estabelecimento e manutenção de um ambiente seguro. Dessa maneira, é de suma importância que o sistema de segurança estabelecido seja fiável, eficiente e de tão fácil uso quanto possível.
 
-**Adicionar imagem de um esquema do amiente a ser monitorado**
+**Adicionar imagem de um esquema do ambiente a ser monitorado**
 
 O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barramento, de forma que existam restrições de entrada e limitação do espaço de circulação. Além disso, também podem haver sensores que observam as condições de equipamentos.
 
 ## Descrição do Funcionamento
 
 1. Cada pessoa possui um cartão RFID com um identificador único (ID). Quando tenta aceder à sala, o leitor comunica com a ESP32 que verifica na sua memória se o utilizador está na lista de permissões.
-2. Nesta verificação o acesso é concedido ou negado e a unidade central(RaspberryPi) é avisada de modo que possa permitir a abertura ou bloqueio da porta.
+2. Nesta verificação o acesso é concedido ou negado e a unidade central(RaspberryPi) é informada, através de MQTT, sobre o acesso.
 3. Após a entrada na sala, um sensor LiDAR mapeia a posição da pessoa em tempo real para averiguar em que zona ela se encontra.
 4. Conforme a posição, o sistema reage autonomamente ativando uma luz que indica o risco a que a pessoa está sujeita.
 
@@ -21,11 +21,12 @@ O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barra
 - **Raspberry Pi:** Atua como computador central
 - **Sensor LIDAR:** Recurso para identificação e monitorização de coordenadas em tempo real.
 - **RFID:** Utilizado para o controle de acesso e identificação de utilizadores.
-- **Microcontrolador:** Responsável por ler o sensor RFID, verificar se o utilizador está ou não autorizado e comunicar via CAN Bus.
+- **Microcontrolador:** Responsável por ler o sensor RFID, verificar se o utilizador está ou não autorizado e comunicar os eventos de acesso via Wi-Fi utilizando o protocolo MQTT.
 - **Sinalizadores Físicos:** LED para indicação visual da violação da zona de perigo.
 - **HTTP (Wi-Fi):** Protocolo base para comunicação do computador central com a HMI.
-- **Barramento CAN:** Utilizado para a comunicação entre a unidade central com os periféricos (sensores e atuadores) e pela ESP32 com a Raspberry.
+- **Barramento CAN:** Utilizado para a comunicação entre a unidade central com os periféricos (sensores e atuadores).
 - **HTML:** Linguagem estrutural utilizada para apresentar os dados e autorizar IDs de forma dinâmica.
+- **MQTT:** Protocolo de mensagens utilizado para a comunicação de eventos em tempo real entre a ESP32 e o cérebro central (Raspberry Pi).
 
 ## Descrição do Sistema
 
@@ -37,7 +38,7 @@ A parte física do sistema é formada por um conjunto de sensores
 
 ![lidar_ultrass](resources/LiDAR_Ultrass_wiring.jpeg)
 
-**LiDAR** - O LiDAR foi utilizado de forma a detetar pessoas no interior do ambiente a ser observado, e avisar sobre seu posicionamento. Esse aviso vai ser relativo a zonas de três tipos - **seguro**, **aviso** e **perigo**.
+**LiDAR** - O LiDAR foi utilizado de forma a detetar pessoas no interior do ambiente a ser observado, e avisar sobre o seu posicionamento. Esse aviso vai ser relativo a zonas de três tipos - **seguro**, **aviso** e **perigo**.
 
 **Sensor Ultrassónico** - O sensor ultrassónico foi utilizado para reprensentar um sensor genérico que observa um equipamento. Neste caso, utilizamos esse sensor para imitar um observador de nivél em um tanque de água.
 
@@ -80,6 +81,10 @@ Os dados desta página são guardados na memória não-volátil da ESP32, garant
 
 *descrever página e funcionamento*
 
-### Tecnologias(?)
+### Tecnologias
+**C++:** 
+**Python:** 
+**HTML/CSS:** 
+**Mosquitto (Broker MQTT):??**
 
 
