@@ -34,9 +34,11 @@
 int global_can0_fd = -1;
 int global_can1_fd = -1;
 
+cv::Mat mapImage = cv::imread("lidar_map.png");
+
 
 // task_lidar configuration
-#define LIDAR_UPSIDE_DOWN true
+#define LIDAR_UPSIDE_DOWN false
 #define VALID_LIDAR_CONE_ANGLE 180.0f
 #define NUMBER_OF_SECTORS      360
 #define CAN_HEADER_1 170 // = AA hex
@@ -307,6 +309,45 @@ void task_lidar() {
             }
         }
 
+
+
+        // calculate the exact same scale factor you use for drawing
+        float scaleFactor = imageSize.height / 5.0f;
+
+        for (int i = 0; i < allPoints.size(); i++) {
+            // skip points that are already invalid (e.g., filler 0xFFFF reads)
+            if (!allPoints[i].isValid) continue;
+
+            cv::Point2f p(allPoints[i].coordinates.first, allPoints[i].coordinates.second);
+            
+            p.x *= scaleFactor;
+            p.y *= scaleFactor;
+            p.x += mapImage.cols / 2;
+
+            int pX = static_cast<int>(std::round(p.x));
+            int pY = static_cast<int>(std::round(p.y));
+
+            // ensure coordinates are inside the map boundaries
+            if (pX >= 0 && pX < mapImage.cols && pY >= 0 && pY < mapImage.rows) {
+                
+                // read the pixel from your static, saved map
+                cv::Vec3b pixel = mapImage.at<cv::Vec3b>(pY, pX);
+                
+                bool isPixelEmpty = (pixel[0] == 0 && pixel[1] == 0 && pixel[2] == 0);
+
+                // if the pixel is NOT empty, it means this LiDAR point hit an existing wall
+                if (!isPixelEmpty) {
+                    // Invalidate it! DBscan will now ignore this point completely.
+                    allPoints[i].isValid = false; 
+                }
+            } else {
+                // optional: Invalidate points that fall entirely outside the map
+                allPoints[i].isValid = false; 
+            }
+        }
+
+
+
         // apply DBscan neighbour logic on all points
         for(int i = 0; i < allPoints.size(); i++) {
             find_neighbors(allPoints, i, alpha, alpha_attenuation);
@@ -318,8 +359,8 @@ void task_lidar() {
         // check activeTracks to find most likely (greedy by distance) match between clusters from previous messages and current message
         matchClusters(activeTracks, clusters, deltaTimeSec);
 
-        cv::Mat local_img(imageSize, CV_8UC3, cv::Scalar(0, 0, 0));
-        float scaleFactor = imageSize.height / 5.0f;
+        cv::Mat local_img = mapImage.clone();
+        //cv::Mat local_img(imageSize, CV_8UC3, cv::Scalar(0, 0, 0));
 
 
         for (DBscanCluster &clust : clusters) {
@@ -486,6 +527,11 @@ int main() {
 
     if (!init_can_sockets()) {
         std::cout << "[System] Failed to initialize CAN sockets. Exiting.\n";
+        return -1;
+    }
+
+    if (mapImage.empty()) {
+        std::cout << "[System] Could not open or find the image 'lidar_map.png'\n";
         return -1;
     }
 
