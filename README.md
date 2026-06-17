@@ -1,6 +1,8 @@
 # Automação 2 - Segurança no chão de fábrica
 
+
 ## Introdução
+
 
 **Objetivo Geral:** Sistema inteligente de monitorização e segurança de áreas restritas com controle de acesso por cartão(RFID).
 
@@ -10,6 +12,7 @@ A sensorização é uma parte muito importante do ambiente fabril, não só nas 
 
 O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barramento, de forma que existam restrições de entrada e limitação do espaço de circulação. Além disso, também podem haver sensores que observam as condições de equipamentos.
 
+
 ## Descrição do Funcionamento
 
 
@@ -17,6 +20,7 @@ O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barra
 2. Nesta verificação o acesso é concedido ou negado e a unidade central(RaspberryPi) é informada, através de MQTT, sobre o acesso.
 3. Após a entrada na sala, um sensor LiDAR mapeia a posição da pessoa em tempo real para averiguar em que zona ela se encontra.
 4. Conforme a posição, o sistema reage autonomamente ativando uma luz que indica o risco a que a pessoa está sujeita.
+
 
 ## Materiais e Recursos
 
@@ -30,6 +34,27 @@ O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barra
 - **Barramento CAN:** Utilizado para a comunicação entre a unidade central com os periféricos (sensores e atuadores).
 - **HTML:** Linguagem estrutural utilizada para apresentar os dados e autorizar IDs de forma dinâmica.
 - **MQTT:** Protocolo de mensagens utilizado para a comunicação de eventos em tempo real entre a ESP32 e o cérebro central (Raspberry Pi).
+
+
+## Bibliotecas utilizadas
+
+
+Para organizar o código e implementar todas as funcionalidades de rede, armazenamento e comunicação, o software da ESP32 e Raspberry PI foi estruturado usando bibliotecas específicas e ficheiros desenvolvidos localmente.
+
+### Ficheiros locais desenvolvidos no Projeto
+* **`index.h`:** Armazena a estrutura em HTML/CSS e os marcadores dinâmicos da página principal de gestão e administração de utilizadores.
+* **`Presencas.h`:** Contém a interface e a lógica do painel de monitorização em tempo real.
+
+### Bibliotecas Nativas 
+* **`<WiFi.h>`:** Fornece o suporte de rede necessário para que a ESP32 consiga ligar-se ao ponto de acesso Wi-Fi local.
+* **`<WebServer.h>`:** Permite configurar a placa como um servidor HTTP para escutar os pedidos do navegador, processar formulários e servir as páginas web.
+* **`<Preferences.h>`:** Permite aceder e gravar dados na memória Flash do microcontrolador.
+* **`<ESPmDNS.h>`:** Configura o serviço DNS multicast local, permitindo que o operador aceda ao painel através de um domínio invés de digitar o endereço IP.
+* **`<WiFiUdp.h>`:** Cria a base de comunicação através do protocolo UDP, um requisito essencial para a troca de pacotes com os servidores de tempo.
+
+### Bibliotecas Externas 
+* **`<NTPClient.h>`:** Liga-se a servidores de tempo online (`pool.ntp.org`) para obter e sincronizar a hora exata.
+* **`<PubSubClient.h>`:** Implementa a arquitetura de comunicação MQTT, permitindo à placa conectar-se ao Broker e publicar os pacotes JSON.
 
 
 ## Hardware
@@ -53,6 +78,7 @@ A parte física do sistema é formada por um conjunto de sensores
 
 **Sinalizadores Físicos** - Os leds vão ser usados como indicadores visuais de perigo.
 
+
 ## Lógica de Controlo e Segurança 
 
 
@@ -62,6 +88,7 @@ A parte física do sistema é formada por um conjunto de sensores
   - Zona Restrita: Alerta visual na página HTML.
   - Zona de Perigo: Ativação da luz vermelha.
 **HMI (Interface Homem-Máquina):** Dashboard em HTML que apresenta a posição em tempo real, o histórico de entradas e uma lista dinâmica com campos onde podemos permitir, rejeitar ou alterar informações dos usuários autorizados.
+
 
 ## Software
 
@@ -99,6 +126,19 @@ Este ficheiro armazena o código HTML e CSS da página de configuração princip
 * **Renderização Dinâmica:** Para que a página exiba dados reais, foram integrados marcadores de substituição no HTML. Antes de enviar a página para o navegador, o código  percorre a matriz de utilizadores, gera as linhas da tabela em HTML e substitui os marcadores pelos dados atualizados.
 * **Submissão de Dados:** O controlo administrativo (autorizar utilizadores, alterar contactos e remover acessos) é feito através de formulários web, estes formulários enviam os dados estruturados através do método **HTTP POST**, cujos parâmetros são tratados em tempo real pelas funções da ESP32.
 
+#### 3. Painel de Monitorização em Tempo Real (`Presencas.h`)
+Este ficheiro é responsável pela interface de monitorização e pode ser acedido através do botão `Ver Quem Está na Sala` presente na página principal. O seu objetivo é funcionar como um *dashboard* de segurança, cujo funcionamento baseia-se em três pilares:
+
+* **Filtro de Presenças:** Para mostrar exclusivamente quem se encontra no interior da sala, o software percorre a estrutura de dados em tempo real e constroi dinamicamente uma tabela HTML que exibe apenas os funcionários presentes e a respetiva hora de entrada.
+* **Atualização Visual Automática:** Para que o painel funcione como um fluxo de informação contínuo, foi integrada uma *meta tag* que força o navegador a atualizar-se sozinho a cada 2 segundos, solicitando os dados mais recentes da ESP32-S3. Isto permite que a tabela adicione novas linhas quando alguém entra e as remova quando alguém sai de forma totalmente automática e sem intervenção manual.
+
+
+#### 4. Integração e Telemetria via MQTT
+Apesar da ESP32-S3 tomar todas as decisões de acesso de forma autónoma, ela não funciona de forma isolada no ecossistema da fábrica. Para manter o sistema global interligado, a placa assume o papel de **MQTT Publisher**, dividindo a transmissão de dados em duas etapas: 
+
+* **Comunicação por Eventos:** Sempre que uma *tag* é detetada pelo leitor RFID, a ESP32 publica instantaneamente uma mensagem no tópico `sala/acessos`. Esta arquitetura baseada em eventos evita o desperdício de largura de banda na rede Wi-Fi, uma vez que a placa só comunica quando existe uma alteração física no estado da porta (uma entrada, uma saída ou uma tentativa de acesso negado).
+* **Formato JSON:** A informação do evento é empacotada de forma compacta numa estrutura **JSON** padrão que contém o ID do cartão, o nome do utilizador e o estado correspondente (*"entrou"*, *"saiu"* ou *"recusado"*). Este pacote de dados é recebido pela unidade central (Raspberry Pi).
+
 
 ## Tecnologias
 
@@ -107,7 +147,7 @@ Este ficheiro armazena o código HTML e CSS da página de configuração princip
 
 - **Python:** Utilizado na unidade central (Raspberry Pi) para o processamento dos dados do sensor LIDAR e do sistema de monitorização.
 
-- **HTML/CSS:**Linguagens de marcação e estilo utilizadas no desenvolvimento das interfaces gráficas dinâmicas (HMI) de gestão de acessos e presenças em tempo real.
+- **HTML/CSS:** Linguagens de marcação e estilo utilizadas no desenvolvimento das interfaces gráficas dinâmicas (HMI) de gestão de acessos e presenças em tempo real.
 
 - **Mosquitto (Broker MQTT):??**
 
