@@ -39,7 +39,7 @@ O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barra
 ## Bibliotecas utilizadas
 
 
-Para organizar o código e implementar todas as funcionalidades de rede, armazenamento e comunicação, o software da ESP32 e Raspberry PI foi estruturado usando bibliotecas específicas e ficheiros desenvolvidos localmente.
+Para organizar o código e implementar todas as funcionalidades de rede, armazenamento e comunicação, o software da ESP32 e Raspberry Pi foi estruturado usando bibliotecas específicas e ficheiros desenvolvidos localmente.
 
 ### Ficheiros locais desenvolvidos no Projeto
 * **`index.h`:** Armazena a estrutura em HTML/CSS e os marcadores dinâmicos da página principal de gestão e administração de utilizadores.
@@ -92,6 +92,9 @@ A parte física do sistema é formada por um conjunto de sensores
 
 ## Software
 
+O software foi dividido em duas partes, a unidade central(Raspberry Pi)  e o controlo de acessos(ESP32).
+
+### 1. Unidade Central (Raspberry Pi)
 
 Para mostrar a possibilidade de um sistema descentralizado, utilizamos uma Raspberry Pi para fazer o processamento dos dados e apresenta-los em uma página web, de uma rede local, enquanto que a gestão de permissões de acesso foi desenvolvida em uma ESP32 aparte. Dessa forma, romovemos a comunicação wireless por WiFi entre diferentes servidores onde a falha de um não implica parar o outro.
 
@@ -111,7 +114,9 @@ Os dados desta página são guardados na memória não-volátil da ESP32, garant
 
 *descrever página e funcionamento*
 
-#### 1. O "Cérebro" do Sistema (`Aut_2_projeto.ino`)
+### 2. Controlo de Acessos (ESP32)
+
+#### 2.1. O "Cérebro" do Sistema (`Aut_2_projeto.ino`)
 
 Este é o ficheiro central do projeto, responsável por integrar a lógica de controlo e gerir três blocos fundamentais:
 
@@ -119,21 +124,21 @@ Este é o ficheiro central do projeto, responsável por integrar a lógica de co
 * **Base de Dados Não-Volátil (`Preferences`):** Para evitar a perda da lista de utilizadores autorizados sempre que o sistema é desligado, utilizámos a memória Flash interna da ESP32. Foi criada uma estrutura de dados (`struct`) que guarda o ID, o Nome e o Contacto, permitindo que quando um utilizador é adicionado ou removido, através da interface web, a base de dados é atualizada e gravada instantaneamente.
 * **Sincronização de Tempo:** O sistema liga-se a servidores de tempo online (`pool.ntp.org`) através do protocolo UDP. Isto permite registar a hora exata, sincronizada com o fuso horário de Portugal, em cada entrada e saída, criando um histórico fiável dos movimentos.
 
-#### 2. Interface HMI de Gestão de acessos (`index.h`)
+#### 2.2. Interface HMI de Gestão de acessos (`index.h`)
 Este ficheiro armazena o código HTML e CSS da página de configuração principal. O seu funcionamento e integração com o microcontrolador dividem-se em três partes fundamentais:
 
 * **Armazenamento Eficiente:** O código da interface gráfica é guardado diretamente na memória de programa da ESP32-S3 (`PROGMEM`). Esta abordagem evita o desperdício de memória RAM, permitindo que a placa funcione como um servidor HTTP estável sempre que o operador acede ao domínio `http://acessos.local`.
 * **Renderização Dinâmica:** Para que a página exiba dados reais, foram integrados marcadores de substituição no HTML. Antes de enviar a página para o navegador, o código  percorre a matriz de utilizadores, gera as linhas da tabela em HTML e substitui os marcadores pelos dados atualizados.
 * **Submissão de Dados:** O controlo administrativo (autorizar utilizadores, alterar contactos e remover acessos) é feito através de formulários web, estes formulários enviam os dados estruturados através do método **HTTP POST**, cujos parâmetros são tratados em tempo real pelas funções da ESP32.
 
-#### 3. Painel de Monitorização em Tempo Real (`Presencas.h`)
+#### 2.3. Painel de Monitorização em Tempo Real (`Presencas.h`)
 Este ficheiro é responsável pela interface de monitorização e pode ser acedido através do botão `Ver Quem Está na Sala` presente na página principal. O seu objetivo é funcionar como um *dashboard* de segurança, cujo funcionamento baseia-se em três pilares:
 
 * **Filtro de Presenças:** Para mostrar exclusivamente quem se encontra no interior da sala, o software percorre a estrutura de dados em tempo real e constroi dinamicamente uma tabela HTML que exibe apenas os funcionários presentes e a respetiva hora de entrada.
 * **Atualização Visual Automática:** Para que o painel funcione como um fluxo de informação contínuo, foi integrada uma *meta tag* que força o navegador a atualizar-se sozinho a cada 2 segundos, solicitando os dados mais recentes da ESP32-S3. Isto permite que a tabela adicione novas linhas quando alguém entra e as remova quando alguém sai de forma totalmente automática e sem intervenção manual.
 
 
-#### 4. Integração e Telemetria via MQTT
+#### 2.4. Integração e Telemetria via MQTT
 Apesar da ESP32-S3 tomar todas as decisões de acesso de forma autónoma, ela não funciona de forma isolada no ecossistema da fábrica. Para manter o sistema global interligado, a placa assume o papel de **MQTT Publisher**, dividindo a transmissão de dados em duas etapas: 
 
 * **Comunicação por Eventos:** Sempre que uma *tag* é detetada pelo leitor RFID, a ESP32 publica instantaneamente uma mensagem no tópico `sala/acessos`. Esta arquitetura baseada em eventos evita o desperdício de largura de banda na rede Wi-Fi, uma vez que a placa só comunica quando existe uma alteração física no estado da porta (uma entrada, uma saída ou uma tentativa de acesso negado).
