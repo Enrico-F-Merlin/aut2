@@ -1,5 +1,25 @@
 # Automação 2 - Segurança no chão de fábrica
 
+## Setup
+
+
+Partindo do princípio que as ESPs já foram *flashadas* com seus respetivos códigos.
+
+```
+// compilação de cógigos em um binário executavel
+g++ central_code.cpp src/DBscan.cpp -std=c++17 -o a2App $(pkg-config --cflags --libs opencv4)
+g++ makeMap.cpp src/DBscan.cpp src/ProcessorCAN.cpp -std=c++17 -o makeMap $(pkg-config --cflags --libs opencv4)
+
+// mapear local vazio previamente
+./makeMap
+
+// iniciar sistema e servidor http
+./a2App
+```
+
+O código `makeMap.cpp` utiliza `cv::show()` que é dependente de sistemas de *rendering* e gestão de janelas do linux. De uma forma geral, a biblioteca de *computer vision* tem comportamento mais estável para OS em Linux.
+
+O mapa construído, previamente a iniciação do sistema, serve para facilitar a visualização de objetos no interior e para evitar que objetos estacionários do ambiente sejam confundidos com pessoas, conforme a visão do LiDAR é obstruída e os pontos deslocam-se.
 
 ## Introdução
 
@@ -8,7 +28,7 @@
 
 A sensorização é uma parte muito importante do ambiente fabril, não só nas linhas de produção, como componente nuclear do processo de automação, mas também no estabelecimento e manutenção de um ambiente seguro. Dessa maneira, é de suma importância que o sistema de segurança estabelecido seja fiável, eficiente e de tão fácil uso quanto possível.
 
-**Adicionar imagem de um esquema do ambiente a ser monitorado**
+![esquema_sala](resources/esquema_sala.png)
 
 O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barramento, de forma que existam restrições de entrada e limitação do espaço de circulação. Além disso, também podem haver sensores que observam as condições de equipamentos.
 
@@ -51,10 +71,14 @@ Para organizar o código e implementar todas as funcionalidades de rede, armazen
 * **`<Preferences.h>`:** Permite aceder e gravar dados na memória Flash do microcontrolador.
 * **`<ESPmDNS.h>`:** Configura o serviço DNS multicast local, permitindo que o operador aceda ao painel através de um domínio invés de digitar o endereço IP.
 * **`<WiFiUdp.h>`:** Cria a base de comunicação através do protocolo UDP, um requisito essencial para a troca de pacotes com os servidores de tempo.
+* **`<Thread>`**, **`<mutex>`**, **`<condition_variable>`**, **`<atomic>`**, **`<csignal>`:** Conjunto utilizado para controlo de concorrência e sincronização de dados.
+* **`<sys/socket.h>`**, **`<sys/ioctl.h>`**, **`<net/if.h>`**, **`<linux/can.h>`:** Bibliotecas de controlo de comunicação de baixo nível.
 
 ### Bibliotecas Externas 
 * **`<NTPClient.h>`:** Liga-se a servidores de tempo online (`pool.ntp.org`) para obter e sincronizar a hora exata.
 * **`<PubSubClient.h>`:** Implementa a arquitetura de comunicação MQTT, permitindo à placa conectar-se ao Broker e publicar os pacotes JSON.
+* **`<opencv2/opencv.hpp>`:** Biblioteca de processamento de imagens.
+* **`<httplib.h>`:** Biblioteca de gestão simplificada de clientes/servidores HTTP/HTTPS.
 
 
 ## Hardware
@@ -96,7 +120,9 @@ O software foi dividido em duas partes, a unidade central(Raspberry Pi)  e o con
 
 ### 1. Unidade Central (Raspberry Pi)
 
-Para mostrar a possibilidade de um sistema descentralizado, utilizamos uma Raspberry Pi para fazer o processamento dos dados e apresenta-los em uma página web, de uma rede local, enquanto que a gestão de permissões de acesso foi desenvolvida em uma ESP32 aparte. Dessa forma, romovemos a comunicação wireless por WiFi entre diferentes servidores onde a falha de um não implica parar o outro.
+Para mostrar a possibilidade de um sistema descentralizado, utilizamos uma Raspberry Pi para fazer o processamento dos dados e apresenta-los em uma página web, de uma rede local, enquanto que a gestão de permissões de acesso foi desenvolvida em uma ESP32 aparte. Dessa forma, promovemos a comunicação wireless por WiFi entre diferentes servidores onde a falha de um não implica parar o outro.
+
+O sistema de detecção e acompanhamento de objetos funciona utilizando o ***DBSCAN** (Density-Based Spatial Clustering of Applications with Noise)* e calculando centroídes, que serão marcados e acompanhados, em cada uma das leituras do LiDAR. Um sensor ultrassónico foi introduzido para mostrar a modularização do sistema.
 
 ![html_page](resources/html_sensor_view.png)
 
@@ -112,7 +138,6 @@ Além do painel de monitorização visual, o sistema conta com uma página HTML 
 
 Os dados desta página são guardados na memória não-volátil da ESP32, garantindo persistência de dados em caso de falha de energia.
 
-*descrever página e funcionamento*
 
 ### 2. Controlo de Acessos (ESP32)
 
@@ -167,6 +192,6 @@ Apesar da ESP32-S3 tomar todas as decisões de acesso de forma autónoma, ela n�
 
 - **HTML/CSS:** Linguagens de marcação e estilo utilizadas no desenvolvimento das interfaces gráficas dinâmicas (HMI) de gestão de acessos e presenças em tempo real.
 
-- **Mosquitto (Broker MQTT):??**
+- **Mosquitto (Broker MQTT):** Transferência de dados no formato *publish/subscribe* de dados esseciais diretamente entre componentes do sistema.
 
 
