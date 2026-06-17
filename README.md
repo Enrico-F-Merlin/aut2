@@ -1,7 +1,6 @@
 # Automação 2 - Segurança no chão de fábrica
 
 ## Introdução
----
 
 **Objetivo Geral:** Sistema inteligente de monitorização e segurança de áreas restritas com controle de acesso por cartão(RFID).
 
@@ -12,7 +11,7 @@ A sensorização é uma parte muito importante do ambiente fabril, não só nas 
 O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barramento, de forma que existam restrições de entrada e limitação do espaço de circulação. Além disso, também podem haver sensores que observam as condições de equipamentos.
 
 ## Descrição do Funcionamento
----
+
 
 1. Cada pessoa possui um cartão RFID com um identificador único (ID). Quando tenta aceder à sala, o leitor comunica com a ESP32 que verifica na sua memória se o utilizador está na lista de permissões.
 2. Nesta verificação o acesso é concedido ou negado e a unidade central(RaspberryPi) é informada, através de MQTT, sobre o acesso.
@@ -20,7 +19,7 @@ O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barra
 4. Conforme a posição, o sistema reage autonomamente ativando uma luz que indica o risco a que a pessoa está sujeita.
 
 ## Materiais e Recursos
----
+
 
 - **Raspberry Pi:** Atua como computador central
 - **Sensor LIDAR:** Recurso para identificação e monitorização de coordenadas em tempo real.
@@ -34,7 +33,7 @@ O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barra
 
 
 ## Hardware
----
+
 
 A parte física do sistema é formada por um conjunto de sensores
 
@@ -55,7 +54,7 @@ A parte física do sistema é formada por um conjunto de sensores
 **Sinalizadores Físicos** - Os leds vão ser usados como indicadores visuais de perigo.
 
 ## Lógica de Controlo e Segurança 
----
+
 
 **Validação (Dinâmica) de IDs:** Camada de segurança que verifica o ID e permite ou rejeita a entrada com base nos IDs autorizados.
 **Processamento de Sinais:** Conversão das leituras do LIDAR em zonas lógicas:
@@ -65,7 +64,7 @@ A parte física do sistema é formada por um conjunto de sensores
 **HMI (Interface Homem-Máquina):** Dashboard em HTML que apresenta a posição em tempo real, o histórico de entradas e uma lista dinâmica com campos onde podemos permitir, rejeitar ou alterar informações dos usuários autorizados.
 
 ## Software
----
+
 
 Para mostrar a possibilidade de um sistema descentralizado, utilizamos uma Raspberry Pi para fazer o processamento dos dados e apresenta-los em uma página web, de uma rede local, enquanto que a gestão de permissões de acesso foi desenvolvida em uma ESP32 aparte. Dessa forma, romovemos a comunicação wireless por WiFi entre diferentes servidores onde a falha de um não implica parar o outro.
 
@@ -86,7 +85,7 @@ Os dados desta página são guardados na memória não-volátil da ESP32, garant
 *descrever página e funcionamento*
 
 ## Tecnologias
----
+
 
 - **C++:** Utilizado para programar a lógica da ESP32, incluindo a leitura SPI do leitor RFID, o servidor web local e a publicação de estados de acesso via MQTT.
 
