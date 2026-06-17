@@ -83,12 +83,12 @@ Os dados desta página são guardados na memória não-volátil da ESP32, garant
 
 ### Tecnologias
 
-**C++:** Utilizado para programar a lógica da ESP32, incluindo a leitura SPI do leitor RFID, o servidor web local e a publicação de estados de acesso via MQTT.
+- **C++:** Utilizado para programar a lógica da ESP32, incluindo a leitura SPI do leitor RFID, o servidor web local e a publicação de estados de acesso via MQTT.
 
-**Python:** Utilizado na unidade central (Raspberry Pi) para o processamento dos dados do sensor LIDAR e do sistema de monitorização.
+- **Python:** Utilizado na unidade central (Raspberry Pi) para o processamento dos dados do sensor LIDAR e do sistema de monitorização.
 
-**HTML/CSS:**Linguagens de marcação e estilo utilizadas no desenvolvimento das interfaces gráficas dinâmicas (HMI) de gestão de acessos e presenças em tempo real.
+- **HTML/CSS:**Linguagens de marcação e estilo utilizadas no desenvolvimento das interfaces gráficas dinâmicas (HMI) de gestão de acessos e presenças em tempo real.
 
-**Mosquitto (Broker MQTT):??**
+- **Mosquitto (Broker MQTT):??**
 
 
