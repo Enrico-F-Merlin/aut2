@@ -84,6 +84,16 @@ Os dados desta página são guardados na memória não-volátil da ESP32, garant
 
 *descrever página e funcionamento*
 
+### 1. O "Cérebro" do Sistema (`Aut_2_projeto.ino`)
+
+Este é o ficheiro central do projeto, responsável por integrar a lógica de controlo e gerir três blocos fundamentais:
+
+* **Controlo de Hardware (SPI):** Gere a comunicação direta com o leitor RFID MFRC522. O ciclo principal de execução (`loop`) foi programado de forma a não bloquear, isto significa que a ESP32 consegue ler a *tag* de um cartão em milissegundos, sem interromper ou atrasar o tempo de resposta do servidor web.
+* **Base de Dados Não-Volátil (`Preferences`):** Para evitar a perda da lista de utilizadores autorizados sempre que o sistema é desligado, utilizámos a memória Flash interna da ESP32. Foi criada uma estrutura de dados (`struct`) que guarda o ID, o Nome e o Contacto, permitindo que quando um utilizador é adicionado ou removido, através da interface web, a base de dados é atualizada e gravada instantaneamente.
+* **Sincronização de Tempo:** O sistema liga-se a servidores de tempo online (`pool.ntp.org`) através do protocolo UDP. Isto permite registar a hora exata, sincronizada com o fuso horário de Portugal, em cada entrada e saída, criando um histórico fiável dos movimentos.
+
+
+
 ## Tecnologias
 
 
