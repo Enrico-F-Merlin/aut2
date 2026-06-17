@@ -1,24 +1,38 @@
 #include <index.h>
+#include <Presencas.h>
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Preferences.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h>
-#include <ESPmDNS.h> 
+#include <ESPmDNS.h>  
 
+// Configurações RFID
+#include <SPI.h>
+#include <MFRC522.h>
+
+#define SS_PIN  10  // Pino SDA
+#define RST_PIN 9   // Pino Reset
+
+MFRC522 mfrc522(SS_PIN, RST_PIN); //Inicialização do leitor
+
+
+// Servidor HTTP
 WebServer server(80);
-Preferences preferences;
+Preferences preferences; //Permite guardar dados na memória do ESP32
 
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", 3600, 60000); 
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 3600, 60000); //horário de portugal
 
-const int MAX_UTILIZADORES = 50; 
+const int MAX_UTILIZADORES = 50; //Número de utilizadores autorizados a entrar na sala
 
+// Estrutura dos dados
 struct Utilizador {
   String id;
   String nome;
   String contacto;
   bool presente; 
+  String horaEntrada;
 };
 
 struct RegistoLog {
@@ -28,16 +42,22 @@ struct RegistoLog {
 };
 
 Utilizador listaUtilizadores[MAX_UTILIZADORES]; 
-RegistoLog historicoLogs[10]; 
+RegistoLog historicoLogs[10]; //Últimos 10 movimentos
 String mensagemStatus = ""; 
 
+
+//---------------------------  Funções  --------------------------------------
+
+// Regista a hora exata e a ação (Entrada/Saída/Negado)
 void adicionarLog(String nome, String acao) {
   timeClient.update(); 
   String horaAtual = timeClient.getFormattedTime(); 
+
   for(int i = 9; i > 0; i--) { historicoLogs[i] = historicoLogs[i-1]; }
   historicoLogs[0] = {horaAtual, nome, acao};
 }
 
+// Grava a lista de utilizadores na memória não-volátil
 void guardarDadosNaMemoria() {
   preferences.begin("controlo_ac", false); 
   for(int i = 0; i < MAX_UTILIZADORES; i++) {
@@ -48,6 +68,7 @@ void guardarDadosNaMemoria() {
   preferences.end(); 
 }
 
+// Carrega os dados guardados; Cria utilizador teste na 1vez
 void carregarDadosDaMemoria() {
   preferences.begin("controlo_ac", true); 
   bool memoriaVazia = true;
@@ -60,17 +81,25 @@ void carregarDadosDaMemoria() {
   }
   preferences.end();
   if (memoriaVazia) {
-    listaUtilizadores[0] = {"120203", "Carlos Antunes", "911223344", false};
+    listaUtilizadores[0] = {"120203", "Iara Reis", "911223344", false, "--:--:--"};
     guardarDadosNaMemoria(); 
   }
 }
 
+//Lógica da entrada/saída
 void registarPassagemFisica(String idLido) {
   bool encontrado = false;
   for(int i = 0; i < MAX_UTILIZADORES; i++) {
     if(listaUtilizadores[i].id == idLido) {
       encontrado = true;
       listaUtilizadores[i].presente = !listaUtilizadores[i].presente; 
+      
+      // Se a pessoa acabou de ENTRAR, guarda a hora exata
+      if(listaUtilizadores[i].presente == true) {
+        timeClient.update();
+        listaUtilizadores[i].horaEntrada = timeClient.getFormattedTime();
+      }
+
       String tipoMovimento = listaUtilizadores[i].presente ? "Entrada" : "Saída";
       adicionarLog(listaUtilizadores[i].nome, tipoMovimento);
       break;
@@ -81,6 +110,10 @@ void registarPassagemFisica(String idLido) {
   }
 }
 
+
+//------------------  FUNÇÕES DA INTERFACE WEB (HMI)  -----------------------------
+
+//Pág. Principal
 void enviarPaginaHTML() {
   String htmlDinamico = String(INDEX_HTML);
   
@@ -91,7 +124,8 @@ void enviarPaginaHTML() {
     mensagemStatus = ""; 
   }
   htmlDinamico.replace("%MENSAGEM%", msgHtml);
-  
+
+  //Desenhar tabela
   int contador = 0;
   String tabela = "<table><tr><th>Identificador</th><th>Nome</th><th>Contacto</th></tr>";
   for(int i = 0; i < MAX_UTILIZADORES; i++) {
@@ -104,7 +138,8 @@ void enviarPaginaHTML() {
     }
   }
   tabela += "</table>";
-  
+
+  //Substituição dos marcadores pelas variáveis
   htmlDinamico.replace("%TABELA_IDS%", tabela);
   htmlDinamico.replace("%CONTADOR%", String(contador));
   htmlDinamico.replace("%MAXIMO%", String(MAX_UTILIZADORES));
@@ -112,9 +147,35 @@ void enviarPaginaHTML() {
   server.send(200, "text/html", htmlDinamico);
 }
 
+//Pág. das pessoas dentro da sala em tempo real
+void enviarPaginaPresencas() {
+  String htmlDinamico = String(PRESENCAS_HTML);
+  int dentroDaSala = 0;
+  String tabela = "<table><tr><th>ID</th><th>Nome do Utilizador</th><th>Hora de Entrada</th></tr>";
+  
+  for(int i = 0; i < MAX_UTILIZADORES; i++) {
+    // Filtro para só aparecer na tabela os utilizadores presentes na sala 
+    if(listaUtilizadores[i].id != "" && listaUtilizadores[i].presente == true) {
+      dentroDaSala++;
+      
+      tabela += "<tr><td>" + listaUtilizadores[i].id + "</td><td>" + listaUtilizadores[i].nome + "</td><td><span class='status-in'>" + listaUtilizadores[i].horaEntrada + "</span></td></tr>";
+    }
+  }
+  tabela += "</table>";
+  
+  //Substituição dos marcadores pelas variáveis
+  htmlDinamico.replace("%TABELA_PRESENCAS%", tabela);
+  htmlDinamico.replace("%TOTAL_DENTRO%", String(dentroDaSala));
+  
+  server.send(200, "text/html", htmlDinamico);
+}
+
+
+//Adicionar novo utilizador autorizado
 void tratarAdicionarID() {
   if (server.hasArg("id_form") && server.hasArg("nome_form")) {
-    String novoID = server.arg("id_form"); String novoNome = server.arg("nome_form");
+    String novoID = server.arg("id_form"); 
+    String novoNome = server.arg("nome_form");
     String novoContacto = server.hasArg("contacto_form") ? server.arg("contacto_form") : "";
     novoID.trim(); novoNome.trim(); novoContacto.trim();
     
@@ -124,12 +185,12 @@ void tratarAdicionarID() {
     }
     
     if (jaExiste) {
-      mensagemStatus = "Erro: O ID " + novoID + " já se encontra autorizado!";
+      mensagemStatus = "Erro: O ID " + novoID + " já está autorizado!";
     } else {
       bool adicionado = false;
       for(int i=0; i<MAX_UTILIZADORES; i++) {
         if(listaUtilizadores[i].id == "") {
-          listaUtilizadores[i] = {novoID, novoNome, novoContacto, false};
+          listaUtilizadores[i] = {novoID, novoNome, novoContacto, false, "--:--:--"};
           mensagemStatus = "Sucesso: " + novoNome + " autorizado."; 
           guardarDadosNaMemoria(); 
           adicionado = true;
@@ -143,6 +204,8 @@ void tratarAdicionarID() {
   server.send(303);
 }
 
+
+// Alterar contacto de um utilizador autorizado
 void tratarAlterarContacto() {
   if (server.hasArg("id_alterar") && server.hasArg("contacto_alterar")) {
     String idAlterar = server.arg("id_alterar");
@@ -167,6 +230,8 @@ void tratarAlterarContacto() {
   server.send(303);
 }
 
+
+//Remover autorização do utilizador
 void tratarRemoverID() {
   if (server.hasArg("id_remover")) {
     String idParaRemover = server.arg("id_remover");
@@ -180,7 +245,7 @@ void tratarRemoverID() {
         listaUtilizadores[i].nome = "";
         listaUtilizadores[i].contacto = "";
         listaUtilizadores[i].presente = false;
-        
+        listaUtilizadores[i].horaEntrada = "";
         encontrado = true;
         mensagemStatus = "Sucesso: O acesso para " + nomeRemovido + " foi removido.";
         guardarDadosNaMemoria(); 
@@ -195,6 +260,7 @@ void tratarRemoverID() {
   server.send(303);
 }
 
+// Exportar dados em formato JSON 
 void enviarLogsJSON() {
   server.sendHeader("Access-Control-Allow-Origin", "*"); 
   String json = "[";
@@ -210,15 +276,18 @@ void enviarLogsJSON() {
   server.send(200, "application/json", json);
 }
 
+
+//-----------------------------  VOID SETUP()  ------------------------------------  
 void setup() {
-  Serial.begin(9600);
+
   carregarDadosDaMemoria(); 
   
+  //Ligar à rede
   WiFi.begin("Iara's Galaxy A22 5G", "qudy3038"); 
   while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
   Serial.println("\nServidor online no IP: " + WiFi.localIP().toString());
 
-  
+  //DNS local
   if (MDNS.begin("acessos")) {
     Serial.println("DNS Ativo! Podes aceder via: http://acessos.local");
   } else {
@@ -227,60 +296,75 @@ void setup() {
 
   timeClient.begin(); 
 
+  //Botões da HMI 
   server.on("/", enviarPaginaHTML);
+  server.on("/presencas", HTTP_GET, enviarPaginaPresencas); 
   server.on("/adicionar", HTTP_POST, tratarAdicionarID);
   server.on("/alterar", HTTP_POST, tratarAlterarContacto);
   server.on("/remover", HTTP_POST, tratarRemoverID); 
   server.on("/api/logs", HTTP_GET, enviarLogsJSON);
   
   server.begin();
+
+  Serial.begin(115200);
+  delay(2000);
+  SPI.begin(); //Inicializa barramento SPI
+  mfrc522.PCD_Init(); //Inicializa módulo MFRC522
+  delay(4); 
+  mfrc522.PCD_DumpVersionToSerial();
+  Serial.println("Aproxime o seu cartao/tag do leitor...");
 }
 
+//---------------------------------  VOID LOOP()  --------------------------------
+
 void loop() {
+  // Mantém as páginas HTML ativas
   server.handleClient(); 
 
-  static unsigned long lastAttemptTime = 0;
-  unsigned long now = millis();
+  // Procura novos cartões 
+  if (!mfrc522.PICC_IsNewCardPresent()) {
+    return;
+  }
+  // Tenta ler o número de série do cartão encontrado
+  if (!mfrc522.PICC_ReadCardSerial()) {
+    return;
+  }
+  // Extrai o UID do hardware e converte os bytes para uma String Hexadecimal
+  String ID_Lido = "";
+  for (byte i = 0; i < 4; i++) {
+    String hex = String(mfrc522.uid.uidByte[i], HEX);
+    if (hex.length() == 1) hex = "0" + hex; // Garante dois dígitos por byte
+    ID_Lido += hex;
+  }
 
-  if (now - lastAttemptTime > 2000) {
-    lastAttemptTime = now;
+  ID_Lido.toUpperCase(); // Converte letras em maiúsculas
 
-    // Falta o código da leitura real do RFID
-    String ID_Lido = "";
-    
-    if (ID_Lido != "") {
-      Serial.println("\nCartão detetado: " + ID_Lido);
+  // Comando para o leitor ignorar cartões parados no sensor (evita leituras repetidas)
+  mfrc522.PICC_HaltA();
+
+  Serial.println("\n--- Cartão detetado: " + ID_Lido + " ---");
       
-      // 1. Valida o ID
-      bool temAcesso = false;
-      String nomeDaPessoa = "Desconhecido";
+  //Validação Local: Verifica se o ID lido está autorizado
+  bool temAcesso = false;
+  String nomeDaPessoa = "Desconhecido";
       
-      for(int i = 0; i < MAX_UTILIZADORES; i++) {
-        if(listaUtilizadores[i].id == ID_Lido && listaUtilizadores[i].id != "") {
-          temAcesso = true;
-          nomeDaPessoa = listaUtilizadores[i].nome; 
-          break;
-        }
-      }
-
-      registarPassagemFisica(ID_Lido);
-
-      // 2. Comunica com a RaspberryPi
-      WiFiClient rfidClient;
-      if (rfidClient.connect("rpi-756.local", 8080)) {
-        
-        if (temAcesso) {
-          Serial.println("Acesso PERMITIDO para " + nomeDaPessoa);
-          rfidClient.println("AUTORIZADO:" + ID_Lido + ":" + nomeDaPessoa); 
-        } else {
-          Serial.println("Acesso RECUSADO");
-          rfidClient.println("NEGADO:" + ID_Lido + ":Desconhecido");
-        }
-        
-        rfidClient.stop();
-      } else {
-        Serial.println("Erro na comunicação com a RPi");
-      }
+  for(int i = 0; i < MAX_UTILIZADORES; i++) {
+    if(listaUtilizadores[i].id == ID_Lido && listaUtilizadores[i].id != "") {
+      temAcesso = true;
+      nomeDaPessoa = listaUtilizadores[i].nome; 
+      break;
     }
-  } 
+  }
+
+  //Registrar dados
+  registarPassagemFisica(ID_Lido);
+
+  //Simulação da porta
+  if (temAcesso) {
+    Serial.println("-> Acesso PERMITIDO para: " + nomeDaPessoa);
+    Serial.println(">>> PORTA A ABRIR <<< (Trinco elétrico ativado)");
+  } else {
+    Serial.println("-> Acesso RECUSADO.");
+    Serial.println("!!! PORTA TRANCADA !!! (Alarme visual ativado)");
+  }
 }

@@ -35,6 +35,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <body>
 
     <h2>Sistema de Monitorização - Controlo de Acesso</h2>
+
+    <a href="/presencas" class="btn" style="background-color: #004085; color: white; text-decoration: none; margin-bottom: 20px; display: inline-block;">Ver Quem Está na Sala</a>
     
    <a href="http://rpi-756.local:8080" class="btn btn-add" style="margin-bottom: 20px; text-decoration: none; display: inline-block;">Ver Mapa Dinâmico da Sala</a>
     
