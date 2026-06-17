@@ -6,6 +6,7 @@
 #include <WiFiUdp.h>
 #include <NTPClient.h>
 #include <ESPmDNS.h>  
+#include <PubSubClient.h>
 
 // Configurações RFID
 #include <SPI.h>
@@ -44,6 +45,13 @@ struct RegistoLog {
 Utilizador listaUtilizadores[MAX_UTILIZADORES]; 
 RegistoLog historicoLogs[10]; //Últimos 10 movimentos
 String mensagemStatus = ""; 
+
+// Configurações MQTT
+const char* mqtt_broker = "192.168.X.X"; // SUBSTITUIR IP
+const int mqtt_port = 1883;
+
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
 
 
 //---------------------------  Funções  --------------------------------------
@@ -86,7 +94,7 @@ void carregarDadosDaMemoria() {
   }
 }
 
-//Lógica da entrada/saída
+// Lógica da entrada/saída com publicações MQTT
 void registarPassagemFisica(String idLido) {
   bool encontrado = false;
   for(int i = 0; i < MAX_UTILIZADORES; i++) {
@@ -94,22 +102,41 @@ void registarPassagemFisica(String idLido) {
       encontrado = true;
       listaUtilizadores[i].presente = !listaUtilizadores[i].presente; 
       
-      // Se a pessoa acabou de ENTRAR, guarda a hora exata
+      String tipoMovimento = "";
+      String estadoMQTT = ""; // Variável para a mensagem MQTT
+      
+      //Quando uma pessoa entra
       if(listaUtilizadores[i].presente == true) {
         timeClient.update();
         listaUtilizadores[i].horaEntrada = timeClient.getFormattedTime();
+        tipoMovimento = "Entrada";
+        estadoMQTT = "entrou";
+      } 
+      //Quando uma pessoa sai
+      else {
+        tipoMovimento = "Saída";
+        estadoMQTT = "saiu";
       }
-
-      String tipoMovimento = listaUtilizadores[i].presente ? "Entrada" : "Saída";
+      // PUBLICAÇÃO MQTT: Mensagem de Sucesso (Entrada/Saída)
+      if(mqttClient.connected()) {
+        String payload = "{\"id\":\"" + idLido + "\", \"nome\":\"" + listaUtilizadores[i].nome + "\", \"estado\":\"" + estadoMQTT + "\"}";
+        mqttClient.publish("sala/acessos", payload.c_str());
+      }
       adicionarLog(listaUtilizadores[i].nome, tipoMovimento);
       break;
     }
   }
+  // Quando a entrada é recusada
   if (!encontrado) {
     adicionarLog("ID: " + idLido, "Acesso Negado");
+    
+    // PUBLICAÇÃO MQTT: Mensagem de Rejeição
+    if(mqttClient.connected()) {
+      String payload = "{\"id\":\"" + idLido + "\", \"nome\":\"Desconhecido\", \"estado\":\"recusado\"}";
+      mqttClient.publish("sala/acessos", payload.c_str());
+    }
   }
 }
-
 
 //------------------  FUNÇÕES DA INTERFACE WEB (HMI)  -----------------------------
 
@@ -276,7 +303,19 @@ void enviarLogsJSON() {
   server.send(200, "application/json", json);
 }
 
-
+// Se o MQTT cair tenta reconectar
+void manterLigacaoMQTT() {
+  if (!mqttClient.connected()) {
+    Serial.print("A ligar ao Broker MQTT...");
+    if (mqttClient.connect("ESP32_ControloEntradas")) {
+      Serial.println(" Ligado ao MQTT!");
+    } else {
+      Serial.print(" Falhou. Erro: ");
+      Serial.println(mqttClient.state());
+    }
+  }
+  mqttClient.loop();
+}
 //-----------------------------  VOID SETUP()  ------------------------------------  
 void setup() {
 
@@ -286,6 +325,9 @@ void setup() {
   WiFi.begin("Iara's Galaxy A22 5G", "qudy3038"); 
   while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
   Serial.println("\nServidor online no IP: " + WiFi.localIP().toString());
+
+  
+  mqttClient.setServer(mqtt_broker, mqtt_port);
 
   //DNS local
   if (MDNS.begin("acessos")) {
@@ -320,6 +362,9 @@ void setup() {
 void loop() {
   // Mantém as páginas HTML ativas
   server.handleClient(); 
+
+  // Manter a ligação MQTT ativa
+  manterLigacaoMQTT();
 
   // Procura novos cartões 
   if (!mfrc522.PICC_IsNewCardPresent()) {
