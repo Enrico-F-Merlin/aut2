@@ -124,6 +124,19 @@ Este é o ficheiro central do projeto, responsável por integrar a lógica de co
 * **Base de Dados Não-Volátil (`Preferences`):** Para evitar a perda da lista de utilizadores autorizados sempre que o sistema é desligado, utilizámos a memória Flash interna da ESP32. Foi criada uma estrutura de dados (`struct`) que guarda o ID, o Nome e o Contacto, permitindo que quando um utilizador é adicionado ou removido, através da interface web, a base de dados é atualizada e gravada instantaneamente.
 * **Sincronização de Tempo:** O sistema liga-se a servidores de tempo online (`pool.ntp.org`) através do protocolo UDP. Isto permite registar a hora exata, sincronizada com o fuso horário de Portugal, em cada entrada e saída, criando um histórico fiável dos movimentos.
 
+#### 2.1.1. Fluxograma Lógico de Decisão
+
+A sequência seguinte resume o funcionamento, de forma ordenada, do ficheiro `Aut_2_projeto.ino` sempre que é detetado um cartão pelo RFID.
+1. **Leitura Física:** Extrai o UID do cartão RFID via barramento SPI. 
+2. **Consulta Local:** Percorre o array guardado na memória `Preferences` à procura do UID correspondente. 
+3. **Decisão de Acesso:** 
+   * **Se encontrar (Acesso Autorizado):** Abre a porta e inverte o estado de presença do utilizador alternando entre `true` e `false` conforme o movimento de entrada ou saída.
+   * **Se não encontrar (Acesso Recusado):** Mantém a porta trancada e regista "Acesso Negado" no histórico local.
+4. **Registro da hora:** Caso seja uma entrada, efetua o pedido UDP ao servidor NTP e registra a hora atual. 
+5. **Sincronização:** Formata o pacote JSON com os dados e faz o *publish* no *Broker* MQTT, a publicação consiste no ID, nome e estado( `”recusado”`,`”entrou”` ou `”saiu”`).
+6. **Atualização da HMI:** Renderiza as novas tabelas HTML para que fiquem prontas na próxima requisição do browser. 
+
+
 #### 2.2. Interface HMI de Gestão de acessos (`index.h`)
 Este ficheiro armazena o código HTML e CSS da página de configuração principal. O seu funcionamento e integração com o microcontrolador dividem-se em três partes fundamentais:
 
