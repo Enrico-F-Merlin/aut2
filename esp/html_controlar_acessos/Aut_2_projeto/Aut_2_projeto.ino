@@ -43,6 +43,8 @@ struct RegistoLog {
 };
 
 Utilizador listaUtilizadores[MAX_UTILIZADORES]; 
+String estadoLedHtml = "<span class=\"led-circulo led-vermelho\"></span><span class=\"led-texto\">Porta Trancada</span>";
+unsigned long momentoAberturaPorta = 0;
 RegistoLog historicoLogs[10]; //Últimos 10 movimentos
 String mensagemStatus = ""; 
 
@@ -101,7 +103,7 @@ void registarPassagemFisica(String idLido) {
     if(listaUtilizadores[i].id == idLido) {
       encontrado = true;
       listaUtilizadores[i].presente = !listaUtilizadores[i].presente; 
-      
+
       String tipoMovimento = "";
       String estadoMQTT = ""; // Variável para a mensagem MQTT
       
@@ -170,8 +172,10 @@ void enviarPaginaHTML() {
   htmlDinamico.replace("%TABELA_IDS%", tabela);
   htmlDinamico.replace("%CONTADOR%", String(contador));
   htmlDinamico.replace("%MAXIMO%", String(MAX_UTILIZADORES));
-  
+  htmlDinamico.replace("%LED_STATUS%", estadoLedHtml);
+
   server.send(200, "text/html", htmlDinamico);
+
 }
 
 //Pág. das pessoas dentro da sala em tempo real
@@ -322,7 +326,7 @@ void setup() {
   carregarDadosDaMemoria(); 
   
   //Ligar à rede
-  WiFi.begin("Iara's Galaxy A22 5G", "qudy3038"); 
+  WiFi.begin("Iara's Galaxy A22 5G", "qudy3038"); //"E's Galaxy A12", "wesf4180"
   while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
   Serial.println("\nServidor online no IP: " + WiFi.localIP().toString());
 
@@ -346,6 +350,10 @@ void setup() {
   server.on("/remover", HTTP_POST, tratarRemoverID); 
   server.on("/api/logs", HTTP_GET, enviarLogsJSON);
   
+  server.on("/statusLed", []() {
+    server.send(200, "text/html", estadoLedHtml);
+  });
+
   server.begin();
 
   Serial.begin(115200);
@@ -365,6 +373,12 @@ void loop() {
 
   // Manter a ligação MQTT ativa
   manterLigacaoMQTT();
+
+  if (momentoAberturaPorta > 0 && (millis() - momentoAberturaPorta > 9000)) {
+    // Volta a trancar a porta
+      estadoLedHtml = "<span class=\"led-circulo led-vermelho\"></span><span class=\"led-texto\">Porta Trancada</span>";
+      momentoAberturaPorta = 0;
+  }
 
   // Procura novos cartões 
   if (!mfrc522.PICC_IsNewCardPresent()) {
@@ -401,15 +415,22 @@ void loop() {
     }
   }
 
-  //Registrar dados
+  //Registar dados
   registarPassagemFisica(ID_Lido);
 
   //Simulação da porta
   if (temAcesso) {
     Serial.println("-> Acesso PERMITIDO para: " + nomeDaPessoa);
     Serial.println(">>> PORTA A ABRIR <<< (Trinco elétrico ativado)");
+    estadoLedHtml = "<span class=\"led-circulo led-verde\"></span><span class=\"led-texto\">Porta Aberta</span>";
+    momentoAberturaPorta = millis(); // Liga o cronómetro de 3 segundos
+    
+
   } else {
     Serial.println("-> Acesso RECUSADO.");
     Serial.println("!!! PORTA TRANCADA !!! (Alarme visual ativado)");
+    estadoLedHtml = "<span class=\"led-circulo led-vermelho\"></span><span class=\"led-texto\">Acesso Recusado</span>";
+    momentoAberturaPorta = millis(); // Liga o cronómetro de 3 segundos
+  
   }
 }
