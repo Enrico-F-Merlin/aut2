@@ -374,7 +374,7 @@ void loop() {
   // Manter a ligação MQTT ativa
   manterLigacaoMQTT();
 
-  if (momentoAberturaPorta > 0 && (millis() - momentoAberturaPorta > 9000)) {
+  if (momentoAberturaPorta > 0 && (millis() - momentoAberturaPorta > 3000)) {
     // Volta a trancar a porta
       estadoLedHtml = "<span class=\"led-circulo led-vermelho\"></span><span class=\"led-texto\">Porta Trancada</span>";
       momentoAberturaPorta = 0;
