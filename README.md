@@ -53,6 +53,9 @@ O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barra
 - **Barramento CAN:** Utilizado para a comunicação entre a unidade central com os periféricos (sensores e atuadores).
 - **HTML:** Linguagem estrutural utilizada para apresentar os dados e autorizar IDs de forma dinâmica.
 - **MQTT:** Protocolo de mensagens utilizado para a comunicação de eventos em tempo real entre a ESP32 e o cérebro central (Raspberry Pi).
+- **UDP(User Datagram Protocol):** É um protocolo de transporte de rede usado para comunicações que exigem velocidades altas e processamento baixo.
+- **NTP (Network Time Protocol):** É um protocolo que corre por cima do UDP, utilizado para ligar microcontroladores a servidores de horas mundiais.
+- **AJAX (Asynchronous JavaScript and XML):** Técnica de programação web que permite ao navegador atualizar partes específicas da página em segundo plano, sem necessidade de recarregar o ecrã inteiro.
 
 
 ## Bibliotecas utilizadas
