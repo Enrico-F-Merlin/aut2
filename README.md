@@ -49,7 +49,6 @@ O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barra
 - **Sensor LIDAR:** Recurso para identificação e monitorização de coordenadas em tempo real.
 - **RFID:** Utilizado para o controle de acesso e identificação de utilizadores.
 - **Microcontrolador:** Responsável por ler o sensor RFID, verificar se o utilizador está ou não autorizado e comunicar os eventos de acesso via Wi-Fi utilizando o protocolo MQTT.
-- **Sinalizadores Físicos:** LED para indicação visual da violação da zona de perigo.
 - **HTTP (Wi-Fi):** Protocolo base para comunicação do computador central com a HMI.
 - **Barramento CAN:** Utilizado para a comunicação entre a unidade central com os periféricos (sensores e atuadores).
 - **HTML:** Linguagem estrutural utilizada para apresentar os dados e autorizar IDs de forma dinâmica.
@@ -107,8 +106,9 @@ A parte física do sistema é formada por um conjunto de sensores
 
 
 **Validação (Dinâmica) de IDs:** Camada de segurança que verifica o ID e permite ou rejeita a entrada com base nos IDs autorizados.
+
 **Processamento de Sinais:** Conversão das leituras do LIDAR em zonas lógicas:
-  - Zona Livre: Pessoa fora de perigo
+  - Zona Livre: Pessoa fora de perigo;
   - Zona Restrita: Alerta visual na página HTML.
   - Zona de Perigo: Ativação da luz vermelha.
 **HMI (Interface Homem-Máquina):** Dashboard em HTML que apresenta a posição em tempo real, o histórico de entradas e uma lista dinâmica com campos onde podemos permitir, rejeitar ou alterar informações dos usuários autorizados.
@@ -143,11 +143,12 @@ Os dados desta página são guardados na memória não-volátil da ESP32, garant
 
 #### 2.1. O "Cérebro" do Sistema (`Aut_2_projeto.ino`)
 
-Este é o ficheiro central do projeto, responsável por integrar a lógica de controlo e gerir três blocos fundamentais:
+Este é o ficheiro central do projeto, responsável por integrar a lógica de controlo e gerir blocos fundamentais:
 
 * **Controlo de Hardware (SPI):** Gere a comunicação direta com o leitor RFID MFRC522. O ciclo principal de execução (`loop`) foi programado de forma a não bloquear, isto significa que a ESP32 consegue ler a *tag* de um cartão em milissegundos, sem interromper ou atrasar o tempo de resposta do servidor web.
+*  **Lógica anti-bloqueio:** Para controlar o tempo que a porta fica aberta (3segundos) utilizamos o millis() invés do delay(), desta forma a página web continua a ser processada e a leitura de cartões ocorre normalmente.
 * **Base de Dados Não-Volátil (`Preferences`):** Para evitar a perda da lista de utilizadores autorizados sempre que o sistema é desligado, utilizámos a memória Flash interna da ESP32. Foi criada uma estrutura de dados (`struct`) que guarda o ID, o Nome e o Contacto, permitindo que quando um utilizador é adicionado ou removido, através da interface web, a base de dados é atualizada e gravada instantaneamente.
-* **Sincronização de Tempo:** O sistema liga-se a servidores de tempo online (`pool.ntp.org`) através do protocolo UDP. Isto permite registar a hora exata, sincronizada com o fuso horário de Portugal, em cada entrada e saída, criando um histórico fiável dos movimentos.
+* **Sincronização de Tempo:** O sistema liga-se a servidores de tempo online (`pool.ntp.org`) através do protocolo UDP. Isto permite registar a hora exata, sincronizada com o fuso horário de Portugal, em cada entrada e saída, criando um histórico fiável.
 
 #### 2.1.1. Fluxograma Lógico de Decisão
 
@@ -157,8 +158,8 @@ A sequência seguinte resume o funcionamento, de forma ordenada, do ficheiro `Au
 3. **Decisão de Acesso:** 
    * **Se encontrar (Acesso Autorizado):** Abre a porta e inverte o estado de presença do utilizador alternando entre `true` e `false` conforme o movimento de entrada ou saída.
    * **Se não encontrar (Acesso Recusado):** Mantém a porta trancada e regista "Acesso Negado" no histórico local.
-4. **Registro da hora:** Caso seja uma entrada, efetua o pedido UDP ao servidor NTP e registra a hora atual. 
-5. **Sincronização:** Formata o pacote JSON com os dados e faz o *publish* no *Broker* MQTT, a publicação consiste no ID, nome e estado( `”recusado”`,`”entrou”` ou `”saiu”`).
+4. **Registro da hora:** Sempre que um cartão é detetado, o sistema efetua um pedido via UDP ao servidor NTP para atualizar o relógio interno da ESP. Esta hora é utilizada tanto para o registo de logs locais como para o envio do pacote via MQTT. 
+5. **Sincronização:** Formata o pacote JSON com os dados e faz o *publish* no *Broker* MQTT, a publicação consiste na hora, nome e estado( `”recusado”`,`”entrou”` ou `”saiu”`).
 6. **Atualização da HMI:** Renderiza as novas tabelas HTML para que fiquem prontas na próxima requisição do browser. 
 
 
@@ -167,13 +168,15 @@ Este ficheiro armazena o código HTML e CSS da página de configuração princip
 
 * **Armazenamento Eficiente:** O código da interface gráfica é guardado diretamente na memória de programa da ESP32-S3 (`PROGMEM`). Esta abordagem evita o desperdício de memória RAM, permitindo que a placa funcione como um servidor HTTP estável sempre que o operador acede ao domínio `http://acessos.local`.
 * **Renderização Dinâmica:** Para que a página exiba dados reais, foram integrados marcadores de substituição no HTML. Antes de enviar a página para o navegador, o código  percorre a matriz de utilizadores, gera as linhas da tabela em HTML e substitui os marcadores pelos dados atualizados.
+* **AJAX:** Para atualizar o estado da porta na página principal foi usado o AJAX invés do recarregamento(Refresh), desta forma adquirimos o estado da porta sem interferir com os formulários.
 * **Submissão de Dados:** O controlo administrativo (autorizar utilizadores, alterar contactos e remover acessos) é feito através de formulários web, estes formulários enviam os dados estruturados através do método **HTTP POST**, cujos parâmetros são tratados em tempo real pelas funções da ESP32.
 
 #### 2.3. Painel de Monitorização em Tempo Real (`Presencas.h`)
-Este ficheiro é responsável pela interface de monitorização e pode ser acedido através do botão `Ver Quem Está na Sala` presente na página principal. O seu objetivo é funcionar como um *dashboard* de segurança, cujo funcionamento baseia-se em três pilares:
+Este ficheiro é responsável pela interface de monitorização e pode ser acedido através do botão `Ver Quem Está na Sala` presente na página principal. O seu objetivo é funcionar como um *dashboard* de segurança, cujo funcionamento baseia-se em dois pilares:
 
 * **Filtro de Presenças:** Para mostrar exclusivamente quem se encontra no interior da sala, o software percorre a estrutura de dados em tempo real e constroi dinamicamente uma tabela HTML que exibe apenas os funcionários presentes e a respetiva hora de entrada.
-* **Atualização Visual Automática:** Para que o painel funcione como um fluxo de informação contínuo, foi integrada uma *meta tag* que força o navegador a atualizar-se sozinho a cada 2 segundos, solicitando os dados mais recentes da ESP32-S3. Isto permite que a tabela adicione novas linhas quando alguém entra e as remova quando alguém sai de forma totalmente automática e sem intervenção manual.
+  
+* **Atualização Visual Automática (refresh):** Para que o painel funcione como um fluxo de informação contínuo, foi integrada uma *meta tag* que força o navegador a atualizar-se sozinho a cada 2 segundos, solicitando os dados mais recentes da ESP32-S3. Isto permite que a tabela adicione novas linhas quando alguém entra e as remova quando alguém sai de forma totalmente automática e sem intervenção manual.
 
 
 #### 2.4. Integração e Telemetria via MQTT
