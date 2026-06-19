@@ -7,7 +7,7 @@
 
 A sensorização é uma parte muito importante do ambiente fabril, não só nas linhas de produção, como componente nuclear do processo de automação, mas também no estabelecimento e manutenção de um ambiente seguro. Dessa maneira, é de suma importância que o sistema de segurança estabelecido seja fiável, eficiente e de tão fácil uso quanto possível.
 
-![esquema_sala](resources/esquema_sala.png)
+![esquema_sala](resources/sala_esquema.jpeg)
 
 O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barramento, de forma que existam restrições de entrada e limitação do espaço de circulação. Além disso, também podem haver sensores que observam as condições de equipamentos.
 
@@ -91,16 +91,16 @@ O mapa construído, previamente a iniciação do sistema, serve para facilitar a
 ## Materiais e Recursos
 
 
-- **Raspberry Pi:** Atua como computador central
-- **Sensor LIDAR:** Recurso para identificação e monitorização de coordenadas em tempo real.
-- **RFID:** Utilizado para o controle de acesso e identificação de utilizadores.
-- **Microcontrolador:** Responsável por ler o sensor RFID, verificar se o utilizador está ou não autorizado e comunicar os eventos de acesso via Wi-Fi utilizando o protocolo MQTT.
-- **HTTP (Wi-Fi):** Protocolo base para comunicação do computador central com a HMI.
-- **Barramento CAN:** Utilizado para a comunicação entre a unidade central com os periféricos (sensores e atuadores).
-- **HTML:** Linguagem estrutural utilizada para apresentar os dados e autorizar IDs de forma dinâmica.
-- **MQTT:** Protocolo de mensagens utilizado para a comunicação de eventos em tempo real entre a ESP32 e o cérebro central (Raspberry Pi).
-- **UDP(User Datagram Protocol):** É um protocolo de transporte de rede usado para comunicações que exigem velocidades altas e processamento baixo.
-- **NTP (Network Time Protocol):** É um protocolo que corre por cima do UDP, utilizado para ligar microcontroladores a servidores de horas mundiais.
+- **Raspberry Pi:** Atua como computador central;
+- **Sensor LIDAR:** Recurso para identificação e monitorização de coordenadas em tempo real;
+- **RFID:** Utilizado para o controle de acesso e identificação de utilizadores;
+- **Microcontrolador:** Responsável por ler o sensor RFID, verificar se o utilizador está ou não autorizado e comunicar os eventos de acesso via Wi-Fi utilizando o protocolo MQTT;
+- **HTTP (Wi-Fi):** Protocolo base para comunicação do computador central com a HMI;
+- **Barramento CAN:** Utilizado para a comunicação entre a unidade central com os periféricos (sensores e atuadores);
+- **HTML:** Linguagem estrutural utilizada para apresentar os dados e autorizar IDs de forma dinâmica;
+- **MQTT:** Protocolo de mensagens utilizado para a comunicação de eventos em tempo real entre a ESP32 e o cérebro central (Raspberry Pi);
+- **UDP(User Datagram Protocol):** É um protocolo de transporte de rede usado para comunicações que exigem velocidades altas e processamento baixo;
+- **NTP (Network Time Protocol):** É um protocolo que corre por cima do UDP, utilizado para ligar microcontroladores a servidores de horas mundiais;
 - **AJAX (Asynchronous JavaScript and XML):** Técnica de programação web que permite ao navegador atualizar partes específicas da página em segundo plano, sem necessidade de recarregar o ecrã inteiro.
 
 
@@ -111,7 +111,7 @@ Para organizar o código e implementar todas as funcionalidades de rede, armazen
 
 ### Ficheiros locais desenvolvidos no Projeto
 * **`index.h`:** Armazena a estrutura em HTML/CSS e os marcadores dinâmicos da página principal de gestão e administração de utilizadores.
-* **`Presencas.h`:** Contém a interface e a lógica do painel de monitorização em tempo real.
+* **`Presencas.h`:** Contém a interface e a lógica do painel de monitorização das pessoas presentes na sala em tempo real.
 * **`lidar_page.html`:** Apresenta a visão do LiDAR sobre o ambiente mapeado, leitura do ultrassom e alguns outros dados obtidos por MQTT e processamento dos dados.
 
 ### Bibliotecas Nativas 
@@ -148,20 +148,6 @@ A parte física do sistema é formada por um conjunto de sensores
 ![can_bus](resources/can_bus.png)
 
 **CAN 2.0A** - O CAN é um protocolo, de nível físico e digital, de comunicação em barramento. Ele vai permitir a adição e remoção de sensores de forma modular, assim evitando que defeitos ou manutenção em um módulo não interrompa funcionamento dos outros. 
-
-**Sinalizadores Físicos** - Os leds vão ser usados como indicadores visuais de perigo.
-
-
-## Lógica de Controlo e Segurança 
-
-
-**Validação (Dinâmica) de IDs:** Camada de segurança que verifica o ID e permite ou rejeita a entrada com base nos IDs autorizados.
-
-**Processamento de Sinais:** Conversão das leituras do LIDAR em zonas lógicas:
-  - Zona Livre: Pessoa fora de perigo;
-  - Zona Restrita: Alerta visual na página HTML.
-  - Zona de Perigo: Ativação da luz vermelha.
-**HMI (Interface Homem-Máquina):** Dashboard em HTML que apresenta a posição em tempo real, o histórico de entradas e uma lista dinâmica com campos onde podemos permitir, rejeitar ou alterar informações dos usuários autorizados.
 
 
 ## Software
