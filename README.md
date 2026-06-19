@@ -162,13 +162,7 @@ O sistema de detecção e acompanhamento de objetos funciona utilizando o ***DBS
 
 ![html_lidar_page](resources/lidar_page.jpeg)
 
-Nesta página podemos observar um ***live feed*** das leituras do LiDAR, assim como uma ***dashboard*** da interpretação dos dados. Além disso, o valor das leituras do sensor ultrassónico são apresentados de forma dinâmica com a ilustração de um tanque da água. Por fim, podemos também observar a listagem das pessoas que estão no interior do ambiente controlado a partir das leituras do RFID.
-
-
-![html_page](resources/html_management_view.png)
-
-Os dados desta página são guardados na memória não-volátil da ESP32, garantindo persistência de dados em caso de falha de energia.
-
+Nesta página podemos observar um ***live feed*** das leituras do LiDAR, assim como uma ***dashboard*** da interpretação dos dados. Além disso, o valor das leituras do sensor ultrassónico são apresentados de forma dinâmica com a ilustração de um tanque da água.
 
 ### 2. Controlo de Acessos (ESP32)
 
