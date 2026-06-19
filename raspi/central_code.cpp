@@ -267,7 +267,7 @@ void task_lidar() {
     static constexpr float alpha_attenuation = 0.08f;   // compensation for point spread over distance
     static constexpr int max_pts = 75;                  // maximum emount of points for a cluster to be valid
     static constexpr int min_pts = 20;                  // minimum emount of points for a cluster to be valid
-    static constexpr float pts_attenuation = 1.5f;      // objects that are further are hit by less points
+    static constexpr float pts_attenuation = 1.75f;      // objects that are further are hit by less points
 
     // colours for clustering
     std::vector<cv::Scalar> Colours = {
