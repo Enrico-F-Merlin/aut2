@@ -1,5 +1,7 @@
 # Automação 2 - Segurança no chão de fábrica
 
+Trabalho realizado por: Enrico Merlim nMec:120278 e Iara Reis nMec:120203
+
 ## Introdução
 
 
