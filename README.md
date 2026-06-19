@@ -178,11 +178,6 @@ O sistema de detecção e acompanhamento de objetos funciona utilizando o ***DBS
 
 Nesta página podemos observar um ***live feed*** das leituras do LiDAR, assim como uma ***dashboard*** da interpretação dos dados. Além disso, o valor das leituras do sensor ultrassónico são apresentados de forma dinâmica com a ilustração de um tanque da água. Por fim, podemos também observar a listagem das pessoas que estão no interior do ambiente controlado a partir das leituras do RFID.
 
-**Interface de Gestão e Servidor Web:**
-Além do painel de monitorização visual, o sistema conta com uma página HTML servida diretamente pela ESP32-S3 via protocolo HTTP. Esta HMI permite ao supervisor:
-- Adicionar e remover acessos de utilizadores de forma dinâmica;
-- Alterar e acrescentar informações de contacto;
-- Consultar uma tabela em tempo real com os utilizadores autorizados (Nome, ID e Contacto).
 
 ![html_page](resources/html_management_view.png)
 
@@ -190,6 +185,8 @@ Os dados desta página são guardados na memória não-volátil da ESP32, garant
 
 
 ### 2. Controlo de Acessos (ESP32)
+
+Além do painel de monitorização visual, o sistema conta com uma página HTML servida diretamente pela ESP32-S3 via protocolo HTTP.
 
 #### 2.1. O "Cérebro" do Sistema (`Aut_2_projeto.ino`)
 
