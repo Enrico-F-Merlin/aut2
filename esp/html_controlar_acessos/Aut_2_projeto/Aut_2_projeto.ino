@@ -136,7 +136,6 @@ void registarPassagemFisica(String idLido) {
     }
   }
   
-  // === TUDO NUM SÍTIO SÓ: LOGS, SERIAL, LED E MQTT PARA ACESSO RECUSADO ===
   if (!encontrado) {
     Serial.println("-> Acesso RECUSADO.");
     Serial.println("!!! PORTA TRANCADA !!! (Alarme visual ativado)");
