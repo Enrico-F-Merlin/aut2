@@ -177,6 +177,17 @@ Este é o ficheiro central do projeto, responsável por integrar a lógica de co
 * **Base de Dados Não-Volátil (`Preferences`):** Para evitar a perda da lista de utilizadores autorizados sempre que o sistema é desligado, utilizámos a memória Flash interna da ESP32. Foi criada uma estrutura de dados (`struct`) que guarda o ID, o Nome e o Contacto, permitindo que quando um utilizador é adicionado ou removido, através da interface web, a base de dados é atualizada e gravada instantaneamente.
 * **Sincronização de Tempo:** O sistema liga-se a servidores de tempo online (`pool.ntp.org`) através do protocolo UDP. Isto permite registar a hora exata, sincronizada com o fuso horário de Portugal, em cada entrada e saída, criando um histórico fiável.
 
+<table border="0">
+  <tr>
+    <td>
+      <img src="resources/Porta_trancada.png" width="45%" alt="Pág. Principal de gestão de acessos">
+    </td>
+    <td>
+      <img src="resources/utilizadores.png" width="45%">
+    </td>
+  </tr>
+</table>
+
 #### 2.1.1. Fluxograma Lógico de Decisão
 
 A sequência seguinte resume o funcionamento, de forma ordenada, do ficheiro `Aut_2_projeto.ino` sempre que é detetado um cartão pelo RFID.
