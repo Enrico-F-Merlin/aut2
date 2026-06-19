@@ -43,11 +43,13 @@ struct RegistoLog {
 };
 
 Utilizador listaUtilizadores[MAX_UTILIZADORES]; 
+String estadoLedHtml = "<span class=\"led-circulo led-vermelho\"></span><span class=\"led-texto\">Porta Trancada</span>";
+unsigned long momentoAberturaPorta = 0;
 RegistoLog historicoLogs[10]; //Últimos 10 movimentos
 String mensagemStatus = ""; 
 
 // Configurações MQTT
-const char* mqtt_broker = "192.168.X.X"; // SUBSTITUIR IP
+const char* mqtt_broker = "172.26.53.197"; // SUBSTITUIR IP
 const int mqtt_port = 1883;
 
 WiFiClient espClient;
@@ -97,42 +99,55 @@ void carregarDadosDaMemoria() {
 // Lógica da entrada/saída com publicações MQTT
 void registarPassagemFisica(String idLido) {
   bool encontrado = false;
+  timeClient.update();
+  String horaAtual = timeClient.getFormattedTime();
+
   for(int i = 0; i < MAX_UTILIZADORES; i++) {
-    if(listaUtilizadores[i].id == idLido) {
+    if(listaUtilizadores[i].id == idLido && listaUtilizadores[i].id != "") {
       encontrado = true;
       listaUtilizadores[i].presente = !listaUtilizadores[i].presente; 
-      
+
       String tipoMovimento = "";
-      String estadoMQTT = ""; // Variável para a mensagem MQTT
+      String estadoMQTT = "";
       
-      //Quando uma pessoa entra
       if(listaUtilizadores[i].presente == true) {
-        timeClient.update();
-        listaUtilizadores[i].horaEntrada = timeClient.getFormattedTime();
+        listaUtilizadores[i].horaEntrada = horaAtual;
         tipoMovimento = "Entrada";
         estadoMQTT = "entrou";
-      } 
-      //Quando uma pessoa sai
-      else {
+      } else {
         tipoMovimento = "Saída";
         estadoMQTT = "saiu";
       }
-      // PUBLICAÇÃO MQTT: Mensagem de Sucesso (Entrada/Saída)
+      
+      // === TUDO NUM SÍTIO SÓ: LOGS, SERIAL, LED E MQTT PARA ACESSO PERMITIDO ===
+      Serial.println("-> Acesso PERMITIDO para: " + listaUtilizadores[i].nome);
+      Serial.println(">>> PORTA A ABRIR <<< (Trinco elétrico ativado)");
+      
+      estadoLedHtml = "<span class=\"led-circulo led-verde\"></span><span class=\"led-texto\">Porta Aberta</span>";
+      momentoAberturaPorta = millis();
+
       if(mqttClient.connected()) {
-        String payload = "{\"id\":\"" + idLido + "\", \"nome\":\"" + listaUtilizadores[i].nome + "\", \"estado\":\"" + estadoMQTT + "\"}";
+        String payload = "{\"hora\":\"" + horaAtual + "\", \"nome\":\"" + listaUtilizadores[i].nome + "\", \"estado\":\"" + estadoMQTT + "\"}";
         mqttClient.publish("sala/acessos", payload.c_str());
       }
+      
       adicionarLog(listaUtilizadores[i].nome, tipoMovimento);
       break;
     }
   }
-  // Quando a entrada é recusada
+  
+  // === TUDO NUM SÍTIO SÓ: LOGS, SERIAL, LED E MQTT PARA ACESSO RECUSADO ===
   if (!encontrado) {
+    Serial.println("-> Acesso RECUSADO.");
+    Serial.println("!!! PORTA TRANCADA !!! (Alarme visual ativado)");
+    
+    estadoLedHtml = "<span class=\"led-circulo led-vermelho\"></span><span class=\"led-texto\">Acesso Recusado</span>";
+    momentoAberturaPorta = millis();
+
     adicionarLog("ID: " + idLido, "Acesso Negado");
     
-    // PUBLICAÇÃO MQTT: Mensagem de Rejeição
     if(mqttClient.connected()) {
-      String payload = "{\"id\":\"" + idLido + "\", \"nome\":\"Desconhecido\", \"estado\":\"recusado\"}";
+      String payload = "{\"hora\":\"" + horaAtual + "\", \"nome\":\"Desconhecido\", \"estado\":\"recusado\"}";
       mqttClient.publish("sala/acessos", payload.c_str());
     }
   }
@@ -170,8 +185,10 @@ void enviarPaginaHTML() {
   htmlDinamico.replace("%TABELA_IDS%", tabela);
   htmlDinamico.replace("%CONTADOR%", String(contador));
   htmlDinamico.replace("%MAXIMO%", String(MAX_UTILIZADORES));
-  
+  htmlDinamico.replace("%LED_STATUS%", estadoLedHtml);
+
   server.send(200, "text/html", htmlDinamico);
+
 }
 
 //Pág. das pessoas dentro da sala em tempo real
@@ -322,7 +339,8 @@ void setup() {
   carregarDadosDaMemoria(); 
   
   //Ligar à rede
-  WiFi.begin("Iara's Galaxy A22 5G", "qudy3038"); 
+  //WiFi.begin("Iara's Galaxy A22 5G", "qudy3038");
+  WiFi.begin("E's Galaxy A12", "wesf4180"); 
   while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
   Serial.println("\nServidor online no IP: " + WiFi.localIP().toString());
 
@@ -346,6 +364,10 @@ void setup() {
   server.on("/remover", HTTP_POST, tratarRemoverID); 
   server.on("/api/logs", HTTP_GET, enviarLogsJSON);
   
+  server.on("/statusLed", []() {
+    server.send(200, "text/html", estadoLedHtml);
+  });
+
   server.begin();
 
   Serial.begin(115200);
@@ -365,6 +387,12 @@ void loop() {
 
   // Manter a ligação MQTT ativa
   manterLigacaoMQTT();
+
+  if (momentoAberturaPorta > 0 && (millis() - momentoAberturaPorta > 3000)) {
+    // Volta a trancar a porta
+      estadoLedHtml = "<span class=\"led-circulo led-vermelho\"></span><span class=\"led-texto\">Porta Trancada</span>";
+      momentoAberturaPorta = 0;
+  }
 
   // Procura novos cartões 
   if (!mfrc522.PICC_IsNewCardPresent()) {
@@ -389,27 +417,5 @@ void loop() {
 
   Serial.println("\n--- Cartão detetado: " + ID_Lido + " ---");
       
-  //Validação Local: Verifica se o ID lido está autorizado
-  bool temAcesso = false;
-  String nomeDaPessoa = "Desconhecido";
-      
-  for(int i = 0; i < MAX_UTILIZADORES; i++) {
-    if(listaUtilizadores[i].id == ID_Lido && listaUtilizadores[i].id != "") {
-      temAcesso = true;
-      nomeDaPessoa = listaUtilizadores[i].nome; 
-      break;
-    }
-  }
-
-  //Registrar dados
   registarPassagemFisica(ID_Lido);
-
-  //Simulação da porta
-  if (temAcesso) {
-    Serial.println("-> Acesso PERMITIDO para: " + nomeDaPessoa);
-    Serial.println(">>> PORTA A ABRIR <<< (Trinco elétrico ativado)");
-  } else {
-    Serial.println("-> Acesso RECUSADO.");
-    Serial.println("!!! PORTA TRANCADA !!! (Alarme visual ativado)");
-  }
 }
