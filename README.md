@@ -12,8 +12,6 @@ A sensorização é uma parte muito importante do ambiente fabril, não só nas 
 O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barramento, de forma que existam restrições de entrada e limitação do espaço de circulação. Além disso, também podem haver sensores que observam as condições de equipamentos.
 
 
-# Automação 2 - Segurança no chão de fábrica
-
 ## Setup
 
 
