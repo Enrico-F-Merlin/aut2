@@ -94,7 +94,7 @@ O mapa construído, previamente a iniciação do sistema, serve para facilitar a
 - **Raspberry Pi:** Atua como computador central;
 - **Sensor LIDAR:** Recurso para identificação e monitorização de coordenadas em tempo real;
 - **RFID:** Utilizado para o controle de acesso e identificação de utilizadores;
-- **Microcontrolador:** Responsável por ler o sensor RFID, verificar se o utilizador está ou não autorizado e comunicar os eventos de acesso via Wi-Fi utilizando o protocolo MQTT;
+- **Microcontrolador(ESP32-S3):** Responsável por ler o sensor RFID, verificar se o utilizador está ou não autorizado e comunicar os eventos de acesso via Wi-Fi utilizando o protocolo MQTT;
 - **HTTP (Wi-Fi):** Protocolo base para comunicação do computador central com a HMI;
 - **Barramento CAN:** Utilizado para a comunicação entre a unidade central com os periféricos (sensores e atuadores);
 - **HTML:** Linguagem estrutural utilizada para apresentar os dados e autorizar IDs de forma dinâmica;
@@ -166,7 +166,7 @@ Nesta página podemos observar um ***live feed*** das leituras do LiDAR, assim c
 
 ### 2. Controlo de Acessos (ESP32)
 
-Além do painel de monitorização visual, o sistema conta com uma página HTML servida diretamente pela ESP32-S3 via protocolo HTTP.
+Além da página mencionada anteriormente, o sistema conta com uma página HTML servida diretamente pela ESP32-S3 via protocolo HTTP.
 
 #### 2.1. O "Cérebro" do Sistema (`Aut_2_projeto.ino`)
 
@@ -198,7 +198,7 @@ A sequência seguinte resume o funcionamento, de forma ordenada, do ficheiro `Au
 #### 2.2. Interface HMI de Gestão de acessos (`index.h`)
 Este ficheiro armazena o código HTML e CSS da página de configuração principal. O seu funcionamento e integração com o microcontrolador dividem-se em três partes fundamentais:
 
-* **Armazenamento Eficiente:** O código da interface gráfica é guardado diretamente na memória de programa da ESP32-S3 (`PROGMEM`). Esta abordagem evita o desperdício de memória RAM, permitindo que a placa funcione como um servidor HTTP estável sempre que o operador acede ao domínio `http://acessos.local`.
+* **Armazenamento Eficiente:** O código da interface gráfica é guardado diretamente na memória flash da ESP32-S3 (`PROGMEM`). Esta abordagem evita o desperdício de memória RAM, permitindo que a placa funcione como um servidor HTTP estável sempre que o operador acede ao domínio `http://acessos.local`.
 * **Renderização Dinâmica:** Para que a página exiba dados reais, foram integrados marcadores de substituição no HTML. Antes de enviar a página para o navegador, o código  percorre a matriz de utilizadores, gera as linhas da tabela em HTML e substitui os marcadores pelos dados atualizados.
 * **AJAX:** Para atualizar o estado da porta na página principal foi usado o AJAX invés do recarregamento(Refresh), desta forma adquirimos o estado da porta sem interferir com os formulários.
 * **Submissão de Dados:** O controlo administrativo (autorizar utilizadores, alterar contactos e remover acessos) é feito através de formulários web, estes formulários enviam os dados estruturados através do método **HTTP POST**, cujos parâmetros são tratados em tempo real pelas funções da ESP32.
@@ -210,6 +210,7 @@ Este ficheiro é responsável pela interface de monitorização e pode ser acedi
   
 * **Atualização Visual Automática (refresh):** Para que o painel funcione como um fluxo de informação contínuo, foi integrada uma *meta tag* que força o navegador a atualizar-se sozinho a cada 2 segundos, solicitando os dados mais recentes da ESP32-S3. Isto permite que a tabela adicione novas linhas quando alguém entra e as remova quando alguém sai de forma totalmente automática e sem intervenção manual.
 
+![Presenças na sala](resources/sala_com_pessoas.jpeg)
 
 #### 2.4. Integração e Telemetria via MQTT
 Apesar da ESP32-S3 tomar todas as decisões de acesso de forma autónoma, ela não funciona de forma isolada no ecossistema da fábrica. Para manter o sistema global interligado, a placa assume o papel de **MQTT Publisher**, dividindo a transmissão de dados em duas etapas: 
