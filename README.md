@@ -179,7 +179,7 @@ Este é o ficheiro central do projeto, responsável por integrar a lógica de co
 
 
 
-![Pág. Principal de gestão de acessos](resources/Porta_trancada.png) ![](resources/utilizadores.png)
+| <img src="resources/Porta_trancada.png" width="350" alt="Interface Principal"> | <img src="resources/utilizadores" width="350" alt="Painel de Presenças"> |
 
 
 #### 2.1.1. Fluxograma Lógico de Decisão
