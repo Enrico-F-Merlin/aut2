@@ -1,5 +1,19 @@
 # Automação 2 - Segurança no chão de fábrica
 
+## Introdução
+
+
+**Objetivo Geral:** Sistema inteligente de monitorização e segurança de áreas restritas com controle de acesso por cartão(RFID).
+
+A sensorização é uma parte muito importante do ambiente fabril, não só nas linhas de produção, como componente nuclear do processo de automação, mas também no estabelecimento e manutenção de um ambiente seguro. Dessa maneira, é de suma importância que o sistema de segurança estabelecido seja fiável, eficiente e de tão fácil uso quanto possível.
+
+![esquema_sala](resources/esquema_sala.png)
+
+O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barramento, de forma que existam restrições de entrada e limitação do espaço de circulação. Além disso, também podem haver sensores que observam as condições de equipamentos.
+
+
+# Automação 2 - Segurança no chão de fábrica
+
 ## Setup
 
 
@@ -67,18 +81,6 @@ O código `makeMap.cpp` utiliza `cv::show()` que é dependente de sistemas de *r
 
 O mapa construído, previamente a iniciação do sistema, serve para facilitar a visualização de objetos no interior e para evitar que objetos estacionários do ambiente sejam confundidos com pessoas, conforme a visão do LiDAR é obstruída e os pontos deslocam-se.
 
-## Introdução
-
-
-**Objetivo Geral:** Sistema inteligente de monitorização e segurança de áreas restritas com controle de acesso por cartão(RFID).
-
-A sensorização é uma parte muito importante do ambiente fabril, não só nas linhas de produção, como componente nuclear do processo de automação, mas também no estabelecimento e manutenção de um ambiente seguro. Dessa maneira, é de suma importância que o sistema de segurança estabelecido seja fiável, eficiente e de tão fácil uso quanto possível.
-
-![esquema_sala](resources/esquema_sala.png)
-
-O sistema desenvolvido consiste em um conjunto de sensores, ligados por um barramento, de forma que existam restrições de entrada e limitação do espaço de circulação. Além disso, também podem haver sensores que observam as condições de equipamentos.
-
-
 ## Descrição do Funcionamento
 
 
@@ -141,7 +143,7 @@ A parte física do sistema é formada por um conjunto de sensores
 
 **Sensor Ultrassónico** - O sensor ultrassónico foi utilizado para reprensentar um sensor genérico que observa um equipamento. Neste caso, utilizamos esse sensor para imitar um observador de nivél em um tanque de água.
 
-![rfid](resources/rfid_wiring.png)
+![rfid](resources/rfid_wiring.jpeg)
 
 **Leitor RFID** - O leitor RFID foi posto à entrada do ambiente a ser controlado de forma a limitar o acesso apenas para pessoas autorizadas.
 
