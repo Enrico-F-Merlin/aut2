@@ -66,7 +66,7 @@ int main() {
 
 
 void appendPointsToImage(const std::vector<DBscanPoint>& pointsCart, cv::Mat& image) {
-    float scaleFactor = image.rows / 5.0f;
+    float scaleFactor = image.rows / 6.0f;
 
     for (const auto& pCart : pointsCart) {
 

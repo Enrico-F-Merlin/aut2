@@ -341,7 +341,7 @@ void task_lidar() {
 
 
         // calculate the exact same scale factor you use for drawing
-        float scaleFactor = imageSize.height / 5.0f;
+        float scaleFactor = imageSize.height / 6.0f;
 
         for (int i = 0; i < allPoints.size(); i++) {
             // skip points that are already invalid (e.g., filler 0xFFFF reads)

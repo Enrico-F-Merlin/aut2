@@ -477,8 +477,8 @@ int DetectOvertake(const TrackedObject& track) {
 
 int DetectZone(const TrackedObject& track) {
 
-    if (track.estPos.first < -3.5f) return 2; //danger zone
-    if (track.estPos.first < -2.5f) return 1; //warning zone
+    if (track.estPos.second > 4.0f) return 2; //danger zone
+    if (track.estPos.second > 3.0f) return 1; //warning zone
 
     return -1;
 }
