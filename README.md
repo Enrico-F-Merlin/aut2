@@ -210,7 +210,7 @@ Este ficheiro é responsável pela interface de monitorização e pode ser acedi
   
 * **Atualização Visual Automática (refresh):** Para que o painel funcione como um fluxo de informação contínuo, foi integrada uma *meta tag* que força o navegador a atualizar-se sozinho a cada 2 segundos, solicitando os dados mais recentes da ESP32-S3. Isto permite que a tabela adicione novas linhas quando alguém entra e as remova quando alguém sai de forma totalmente automática e sem intervenção manual.
 
-![Presenças na sala](resources/sala_com_pessoas.jpeg)
+![Presenças na sala](resources/sala_com_pessoas.png)
 
 #### 2.4. Integração e Telemetria via MQTT
 Apesar da ESP32-S3 tomar todas as decisões de acesso de forma autónoma, ela não funciona de forma isolada no ecossistema da fábrica. Para manter o sistema global interligado, a placa assume o papel de **MQTT Publisher**, dividindo a transmissão de dados em duas etapas: 
