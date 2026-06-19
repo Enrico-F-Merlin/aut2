@@ -5,9 +5,55 @@
 
 Partindo do princípio que as ESPs já foram *flashadas* com seus respetivos códigos.
 
+Na RaspberryPi:
+
+Dependências:
+```
+sudo apt update
+
+// build
+sudo apt install -y build-essential cmake git libssl-dev can-utils net-tools
+
+// computer vision
+sudo apt install -y libopencv-dev python3-opencv
+
+// mosquitto MQTT
+sudo apt install -y mosquitto mosquitto-clients
+
+// adicione as linhas "listener 1883" e "allow_anonymous true"
+nano /etc/mosquitto/mosquitto.conf
+
+sudo systemctl enable mosquitto
+sudo systemctl start mosquitto
+```
+
+O MQTT foi programado com uso de *wrappers* paho.mqtt para C e C++ disponibilizadas no github.
+```
+// C
+cd ~
+git clone https://github.com/eclipse/paho.mqtt.c.git
+cd paho.mqtt.c
+mkdir build && cd build
+cmake -DPAHO_WITH_SSL=ON -DPAHO_BUILD_DOCUMENTATION=OFF -DPAHO_BUILD_SAMPLES=OFF ..
+make -j4
+sudo make install
+sudo ldconfig
+
+// C++
+cd ~
+git clone https://github.com/eclipse/paho.mqtt.cpp.git
+cd paho.mqtt.cpp
+mkdir build && cd build
+cmake -DPAHO_WITH_SSL=ON -DPAHO_BUILD_DOCUMENTATION=OFF -DPAHO_BUILD_SAMPLES=OFF ..
+make -j4
+sudo make install
+sudo ldconfig
+```
+
+Compilação e execução dos códigos
 ```
 // compilação de cógigos em um binário executavel
-g++ central_code.cpp src/DBscan.cpp -std=c++17 -o a2App $(pkg-config --cflags --libs opencv4)
+g++ central_code.cpp src/DBscan.cpp -std=c++17 -o a2App -lpaho-mqttpp3 -lpaho-mqtt3as $(pkg-config --cflags --libs opencv4)
 g++ makeMap.cpp src/DBscan.cpp src/ProcessorCAN.cpp -std=c++17 -o makeMap $(pkg-config --cflags --libs opencv4)
 
 // mapear local vazio previamente
@@ -66,6 +112,7 @@ Para organizar o código e implementar todas as funcionalidades de rede, armazen
 ### Ficheiros locais desenvolvidos no Projeto
 * **`index.h`:** Armazena a estrutura em HTML/CSS e os marcadores dinâmicos da página principal de gestão e administração de utilizadores.
 * **`Presencas.h`:** Contém a interface e a lógica do painel de monitorização em tempo real.
+* **`lidar_page.html`:** Apresenta a visão do LiDAR sobre o ambiente mapeado, leitura do ultrassom e alguns outros dados obtidos por MQTT e processamento dos dados.
 
 ### Bibliotecas Nativas 
 * **`<WiFi.h>`:** Fornece o suporte de rede necessário para que a ESP32 consiga ligar-se ao ponto de acesso Wi-Fi local.
@@ -127,7 +174,7 @@ Para mostrar a possibilidade de um sistema descentralizado, utilizamos uma Raspb
 
 O sistema de detecção e acompanhamento de objetos funciona utilizando o ***DBSCAN** (Density-Based Spatial Clustering of Applications with Noise)* e calculando centroídes, que serão marcados e acompanhados, em cada uma das leituras do LiDAR. Um sensor ultrassónico foi introduzido para mostrar a modularização do sistema.
 
-![html_page](resources/html_sensor_view.png)
+![html_lidar_page](resources/lidar_page.jpeg)
 
 Nesta página podemos observar um ***live feed*** das leituras do LiDAR, assim como uma ***dashboard*** da interpretação dos dados. Além disso, o valor das leituras do sensor ultrassónico são apresentados de forma dinâmica com a ilustração de um tanque da água. Por fim, podemos também observar a listagem das pessoas que estão no interior do ambiente controlado a partir das leituras do RFID.
 
@@ -187,17 +234,3 @@ Apesar da ESP32-S3 tomar todas as decisões de acesso de forma autónoma, ela n�
 
 * **Comunicação por Eventos:** Sempre que uma *tag* é detetada pelo leitor RFID, a ESP32 publica instantaneamente uma mensagem no tópico `sala/acessos`. Esta arquitetura baseada em eventos evita o desperdício de largura de banda na rede Wi-Fi, uma vez que a placa só comunica quando existe uma alteração física no estado da porta (uma entrada, uma saída ou uma tentativa de acesso negado).
 * **Formato JSON:** A informação do evento é empacotada de forma compacta numa estrutura **JSON** padrão que contém o ID do cartão, o nome do utilizador e o estado correspondente (*"entrou"*, *"saiu"* ou *"recusado"*). Este pacote de dados é recebido pela unidade central (Raspberry Pi).
-
-
-## Tecnologias
-
-
-- **C++:** Utilizado para programar a lógica da ESP32, incluindo a leitura SPI do leitor RFID, o servidor web local e a publicação de estados de acesso via MQTT.
-
-- **Python:** Utilizado na unidade central (Raspberry Pi) para o processamento dos dados do sensor LIDAR e do sistema de monitorização.
-
-- **HTML/CSS:** Linguagens de marcação e estilo utilizadas no desenvolvimento das interfaces gráficas dinâmicas (HMI) de gestão de acessos e presenças em tempo real.
-
-- **Mosquitto (Broker MQTT):** Transferência de dados no formato *publish/subscribe* de dados esseciais diretamente entre componentes do sistema.
-
-
