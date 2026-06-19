@@ -23,8 +23,37 @@
 #include <condition_variable>
 #include <csignal>
 #include <sstream>
+#include <mqtt/async_client.h>
 #include "include/DBscan.h"
 #include "include/httplib.h"
+
+// Configurações do MQTT
+//const std::string SERVER_ADDRESS("tcp://rpi-756.local:1883");
+const std::string SERVER_ADDRESS("tcp://localhost:1883");
+const std::string CLIENT_ID("rpi_cpp_publisher");
+const std::string TOPIC("sala/acessos");
+
+std::string ultima_mensagem_mqtt = "Aguardando dados...";
+std::mutex mutex_mqtt;
+
+// Class to manage the MQTT events
+class mqtt_callback : public virtual mqtt::callback
+{
+    void connection_lost(const std::string& cause) override {
+        std::cout << "\nLigação perdida!";
+        if (!cause.empty()) {
+            std::cout << " Causa: " << cause << std::endl;
+        }
+    }
+
+    void message_arrived(mqtt::const_message_ptr msg) override {
+        std::lock_guard<std::mutex> lock(mutex_mqtt);
+        ultima_mensagem_mqtt = msg->to_string();
+    }
+
+    void delivery_complete(mqtt::delivery_token_ptr token) override {}
+};
+
 
 // incoming CAN frame IDs ("can0" 500KBPS extended CAN)
 #define ID_LIDAR    0x010
@@ -58,11 +87,11 @@ static constexpr int MESSAGE_SIZE = 2 * NUMBER_OF_SECTORS + 4;
 
 // Generates the string that will be showed at the web page's dashboard
 //std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids);
-std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass);
+std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::string& msg_mqtt);
 
 // Saves the dashboard string into a local file for logging pourposes. I think is also overkill for the projects
 //void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids);
-void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass);
+void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::string& msg_mqtt);
 
 
 bool init_can_sockets();
@@ -519,8 +548,22 @@ void task_general_data() {
 
 
 int main() {
+    // MQTT conection
+    // client
+    mqtt::async_client client(SERVER_ADDRESS, CLIENT_ID);
+    
+    // associate callback to client
+    mqtt_callback cb;
+    client.set_callback(cb);
+
+    // conection options
+    mqtt::connect_options connOpts;
+    connOpts.set_clean_session(true); // do not save messages
+
+
     // This main thread initializes all others and keeps the HMI in the web page as server
     // To connect, be on same network and connect to <RaspIP>:8080
+
 
     // Register the Ctrl+C signal handler
     std::signal(SIGINT, handle_sigint);
@@ -559,17 +602,22 @@ int main() {
     // Add the Dashboard Text Endpoint
     svr.Get("/dash_data", [](const httplib::Request& req, httplib::Response& res) {
         std::vector<TrackedObject> safe_tracks_copy;
-        //std::vector<uint> safe_rfids_copy; // NEW
         float safe_ultrass = 0.0f;
+        std::string safe_mqtt;
 
         {
             std::lock_guard<std::mutex> dash_lock(mutex_dashboard);
             safe_tracks_copy = shared_dash_state.tracks;
             safe_ultrass = shared_dash_state.ultrass;
-            //safe_rfids_copy = shared_dash_state.present_rfids; // NEW
         }
 
-        std::string dash_text = getDashboardString(safe_tracks_copy, safe_ultrass);
+        {   
+            std::lock_guard<std::mutex> lock(mutex_mqtt);
+            safe_mqtt = ultima_mensagem_mqtt;
+        }
+
+        // Passar a string para a função
+        std::string dash_text = getDashboardString(safe_tracks_copy, safe_ultrass, safe_mqtt);
         res.set_content(dash_text, "text/plain");
     });
 
@@ -623,23 +671,42 @@ int main() {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
-    std::cout << "[main] All tasks running. Press Ctrl+C to exit.\n";
+    try {
+            std::cout << "A conectar ao broker MQTT em " << SERVER_ADDRESS << "..." << std::endl;
+            client.connect(connOpts)->wait();
+            std::cout << "Conectado! A subscrever o tópico: " << TOPIC << "..." << std::endl;
+            
+            // Subscreve o tópico desejado
+            client.subscribe(TOPIC, 1)->wait();
+            std::cout << "Subscrição ativa. Aguardando mensagens... (Pressione Ctrl+C para sair)" << std::endl;
+        }
+        catch (const mqtt::exception& exc) {
+            std::cout << "[main] Erro MQTT: " << exc.what() << std::endl;
+        }
 
+    std::cout << "[main] All tasks running. Press Ctrl+C to exit.\n";
 
     // This loop keeps the dashboard updated for when the web clients asks for new data.
     while (program_running) { 
         std::vector<TrackedObject> safe_tracks_copy;
-        //std::vector<uint> safe_rfids_copy; // NEW
+        //std::vector<uint> safe_rfids_copy;
         float safe_ultrass = 0.0f;
+        std::string safe_mqtt;
+
 
         {
             std::lock_guard<std::mutex> dash_lock(mutex_dashboard);
             safe_tracks_copy = shared_dash_state.tracks;
             safe_ultrass = shared_dash_state.ultrass; 
-            //safe_rfids_copy = shared_dash_state.present_rfids; // NEW
+            //safe_rfids_copy = shared_dash_state.present_rfids;
         }
 
-        printDashboard(safe_tracks_copy, safe_ultrass);
+        {
+            std::lock_guard<std::mutex> lock(mutex_mqtt);
+            safe_mqtt = ultima_mensagem_mqtt;
+        }
+
+        printDashboard(safe_tracks_copy, safe_ultrass, safe_mqtt);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -669,12 +736,13 @@ int main() {
 
 // creates the string that contains the image and dashboard data
 //std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids) {
-std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass) {
+std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::string& msg_mqtt) {
     std::ostringstream dash; 
 
     dash << "=== SENSOR DASHBOARD ===========================================================\n";
     dash << "  Ultrasound Distance: " << std::fixed << std::setprecision(2) << ultrass << " cm\n";
     
+    dash << "  MQTT Message: " << msg_mqtt << "\n";
     // // Print People Inside with Name Translation
     // dash << "  People Inside: ";
     // if (present_rfids.empty()) {
@@ -723,11 +791,11 @@ std::string getDashboardString(const std::vector<TrackedObject>& activeTracks, f
 
 // Saves resulting string into a local file
 //void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::vector<uint>& present_rfids) {
-void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass) {
+void printDashboard(const std::vector<TrackedObject>& activeTracks, float ultrass, const std::string& msg_mqtt) {
     std::ofstream dash("/dev/shm/lidar_dash.txt", std::ios::trunc); 
     if (dash.is_open()) {
         //dash << getDashboardString(activeTracks, ultrass, present_rfids);
-        dash << getDashboardString(activeTracks, ultrass);
+        dash << getDashboardString(activeTracks, ultrass, msg_mqtt);
         dash.close(); 
     } else {
         std::cout << "[Warning] Could not open dashboard file!\n";

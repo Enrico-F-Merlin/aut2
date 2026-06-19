@@ -188,9 +188,8 @@
             </div>
 
             <div class="card">
-                <!-- <h2>People Inside (RFID)</h2> -->
-                 <h2>Nada aqui ainda</h2>
-                <ul class="people-list" id="people_list">
+                <h2>Última Mensagem MQTT</h2>
+                <ul class="people-list" id="mqtt_list">
                     <li>A espera de update...</li>
                 </ul>
             </div>
@@ -256,22 +255,16 @@
                 }
             }
 
-            // 2. Atualizar Lista de Pessoas
-            const peopleMatch = text.match(/People Inside:\s*(.*)/);
-            const peopleList = document.getElementById('people_list');
-            peopleList.innerHTML = '';
-            
-            if (peopleMatch && !peopleMatch[1].includes('None')) {
-                const people = peopleMatch[1].match(/\[(.*?)\]/g);
-                if (people) {
-                    people.forEach(p => {
-                        let li = document.createElement('li');
-                        li.innerText = p.replace('[', '').replace(']', '');
-                        peopleList.appendChild(li);
-                    });
-                }
+            // 2. Atualizar Mensagem MQTT
+            const mqttMatch = text.match(/MQTT Message:\s*(.*)/);
+            const mqttList = document.getElementById('mqtt_list');
+
+            if (mqttMatch && mqttMatch[1].trim() !== "") {
+                // Pega na string lida e coloca dentro da lista
+                mqttList.innerHTML = `<li>${mqttMatch[1].trim()}</li>`;
             } else {
-                peopleList.innerHTML = '<li style="border-left-color: #555; color: #888;">Nada</li>';
+                // Caso esteja vazia
+                mqttList.innerHTML = '<li style="border-left-color: #555; color: #888;">Sem mensagens</li>';
             }
 
             // 3. Atualizar Tabela de Tracks
